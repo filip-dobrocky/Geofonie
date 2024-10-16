@@ -1,0 +1,269 @@
+{
+	"class": "Module",
+	"id": "node_278",
+	"inlets": {
+		
+	},
+	"outlets": [
+		{
+			"assist": "out1"
+		},
+		{
+			"assist": "out2"
+		}
+	],
+	"imports": {
+		
+	},
+	"functions": {
+		
+	},
+	"block": {
+		"class": "Block",
+		"id": "node_316",
+		"children": [
+			{
+				"class": "Declaration",
+				"id": "node_280",
+				"name": "loop_wav",
+				"inputs": [
+					{
+						"class": "Constant",
+						"id": "node_281",
+						"value": "1660996",
+						"eval": 1660996,
+						"type": "constant int",
+						"source": "box: [data loop_wav 1660996 2] => loop_wav_dim_5,loop_wav_chans_6"
+					},
+					{
+						"class": "Constant",
+						"id": "node_282",
+						"value": "2",
+						"eval": 2,
+						"type": "constant int",
+						"source": "box: [data loop_wav 1660996 2] => loop_wav_dim_5,loop_wav_chans_6"
+					}
+				],
+				"attributes": {
+					
+				},
+				"type": "init Data",
+				"typename": "Data",
+				"source": "box: [data loop_wav 1660996 2] => loop_wav_dim_5,loop_wav_chans_6"
+			},
+			{
+				"class": "Declaration",
+				"id": "node_283",
+				"name": "midi_cc3",
+				"inputs": [
+					{
+						"class": "Constant",
+						"id": "node_284",
+						"value": "0",
+						"eval": 0,
+						"type": "constant int",
+						"source": "box: [param midi_cc3 0 @max 0.15 @min 0.0001] => midi_cc3"
+					}
+				],
+				"attributes": {
+					"max": {
+						"class": "Attribute",
+						"id": "node_285",
+						"name": "max",
+						"value": {
+							"class": "Constant",
+							"id": "node_243",
+							"value": "0.15",
+							"eval": 0.15,
+							"type": "constant t_sample",
+							"source": "2:22 -> 2:26"
+						}
+					},
+					"min": {
+						"class": "Attribute",
+						"id": "node_286",
+						"name": "min",
+						"value": {
+							"class": "Constant",
+							"id": "node_245",
+							"value": "0.0001",
+							"eval": 0.0001,
+							"type": "constant t_sample",
+							"source": "2:32 -> 2:38"
+						}
+					}
+				},
+				"type": "control t_sample",
+				"typename": "Param",
+				"source": "box: [param midi_cc3 0 @max 0.15 @min 0.0001] => midi_cc3"
+			},
+			{
+				"class": "Statement",
+				"id": "node_295",
+				"inputs": [
+					{
+						"class": "Expression",
+						"id": "node_296",
+						"operator": "phasor",
+						"inputs": [
+							{
+								"class": "Variable",
+								"id": "node_297",
+								"name": "midi_cc3",
+								"type": "control t_sample",
+								"source": "box: [phasor $in1 $in2] => phasor_1"
+							},
+							{
+								"class": "Constant",
+								"id": "node_298",
+								"value": "0",
+								"eval": 0,
+								"type": "constant int",
+								"source": "box: [phasor $in1 $in2] => phasor_1"
+							}
+						],
+						"attributes": {
+							
+						},
+						"type": "signal t_sample",
+						"source": "box: [phasor $in1 $in2] => phasor_1"
+					}
+				],
+				"outputs": [
+					{
+						"class": "Variable",
+						"id": "node_299",
+						"name": "phasor_1",
+						"type": "signal t_sample",
+						"source": "box: [phasor $in1 $in2] => phasor_1"
+					}
+				],
+				"source": "box: [phasor $in1 $in2] => phasor_1"
+			},
+			{
+				"class": "Statement",
+				"id": "node_300",
+				"inputs": [
+					{
+						"class": "Expression",
+						"id": "node_301",
+						"operator": "sample",
+						"inputs": [
+							{
+								"class": "Variable",
+								"id": "node_302",
+								"name": "loop_wav",
+								"type": "init Data",
+								"source": "box: [sample loop_wav $in1 $in2 @channels 2] => sample_loop_wav_2,sample_loop_wav_3,index_loop_wav_4"
+							},
+							{
+								"class": "Variable",
+								"id": "node_303",
+								"name": "phasor_1",
+								"type": "signal t_sample",
+								"source": "box: [sample loop_wav $in1 $in2 @channels 2] => sample_loop_wav_2,sample_loop_wav_3,index_loop_wav_4"
+							},
+							{
+								"class": "Constant",
+								"id": "node_304",
+								"value": "0",
+								"eval": 0,
+								"type": "constant int",
+								"source": "box: [sample loop_wav $in1 $in2 @channels 2] => sample_loop_wav_2,sample_loop_wav_3,index_loop_wav_4"
+							}
+						],
+						"attributes": {
+							"channels": {
+								"class": "Attribute",
+								"id": "node_305",
+								"name": "channels",
+								"value": {
+									"class": "Constant",
+									"id": "node_268",
+									"value": "2",
+									"eval": 2,
+									"type": "constant int",
+									"source": "box: [sample loop_wav $in1 $in2 @channels 2] => sample_loop_wav_2,sample_loop_wav_3,index_loop_wav_4"
+								},
+								"source": "box: [sample loop_wav $in1 $in2 @channels 2] => sample_loop_wav_2,sample_loop_wav_3,index_loop_wav_4"
+							}
+						},
+						"type": "signal t_sample",
+						"source": "box: [sample loop_wav $in1 $in2 @channels 2] => sample_loop_wav_2,sample_loop_wav_3,index_loop_wav_4"
+					}
+				],
+				"outputs": [
+					{
+						"class": "Variable",
+						"id": "node_306",
+						"name": "sample_loop_wav_2",
+						"type": "signal t_sample",
+						"source": "box: [sample loop_wav $in1 $in2 @channels 2] => sample_loop_wav_2,sample_loop_wav_3,index_loop_wav_4"
+					},
+					{
+						"class": "Variable",
+						"id": "node_307",
+						"name": "sample_loop_wav_3",
+						"type": "signal t_sample",
+						"source": "box: [sample loop_wav $in1 $in2 @channels 2] => sample_loop_wav_2,sample_loop_wav_3,index_loop_wav_4"
+					},
+					{
+						"class": "Variable",
+						"id": "node_308",
+						"name": "index_loop_wav_4",
+						"type": "signal t_sample",
+						"source": "box: [sample loop_wav $in1 $in2 @channels 2] => sample_loop_wav_2,sample_loop_wav_3,index_loop_wav_4"
+					}
+				],
+				"source": "box: [sample loop_wav $in1 $in2 @channels 2] => sample_loop_wav_2,sample_loop_wav_3,index_loop_wav_4"
+			},
+			{
+				"class": "Statement",
+				"id": "node_309",
+				"inputs": [
+					{
+						"class": "Variable",
+						"id": "node_310",
+						"name": "sample_loop_wav_3",
+						"type": "signal t_sample",
+						"source": "box: [out 2 $in1] => "
+					}
+				],
+				"outputs": [
+					{
+						"class": "Variable",
+						"id": "node_311",
+						"name": "out2",
+						"type": "signal t_sample",
+						"source": "box: [out 2 $in1] => "
+					}
+				],
+				"source": "box: [out 2 $in1] => "
+			},
+			{
+				"class": "Statement",
+				"id": "node_312",
+				"inputs": [
+					{
+						"class": "Variable",
+						"id": "node_313",
+						"name": "sample_loop_wav_2",
+						"type": "signal t_sample",
+						"source": "box: [out 1 $in1] => "
+					}
+				],
+				"outputs": [
+					{
+						"class": "Variable",
+						"id": "node_314",
+						"name": "out1",
+						"type": "signal t_sample",
+						"source": "box: [out 1 $in1] => "
+					}
+				],
+				"source": "box: [out 1 $in1] => "
+			}
+		]
+	},
+	"source": "patcher: gen.patcher 00000000135D4370 graph 000000002708CC20"
+}

@@ -1,17 +1,26 @@
 # TODO
 
 ## HW:
-- [ ] TOF sensor  
-- [ ] SDCARD
-- [ ] Battery transducer test  
+
+- [x] TOF sensor
+    * [ ] data smoothing / scaling
+- [x] SDCARD
+- [x] Battery transducer test 
+- [ ] Servo 
+- [ ] PCB / stripboard design
 
 
 ## SW:
 
-- [ ] IP address list
-- [ ] MIDI CC send ISR
+- [x] WiFi
+    * [x] move all config to header
+    * [ ] test max connections
+- [x] MIDI CC send Timer
 - [ ] Touch OSC
+    * [x] Android diconnecting
+    * [ ] Create Layout
 - [ ] Oopsy Granular Synthesis
+    * [x] SD card working
 
 
 

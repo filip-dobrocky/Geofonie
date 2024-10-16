@@ -1,29 +1,28 @@
 #include <ArduinoOSCWiFi.h>
 
-const char* ssid     = "TrychtyrLOM";
-const char* password = "LomLomLom";
+#include "../NetworkConfig.h"
 
-const char* host1 = "192.168.0.210";
+const IPAddress ip(NetworkConfig::ap_ip);
+const IPAddress gateway(NetworkConfig::gateway);
+const IPAddress subnet(NetworkConfig::subnet);
 
-const IPAddress ip(192, 168, 0, 201);
-const IPAddress gateway(192, 168, 10, 1);
-const IPAddress subnet(255, 255, 255, 0);
 
-const int recv_port = 54345;
-const int send_port = 54350;
+// OSC input parameters
+float slider_value = 0;
 
+// OSC output parameters
 int brightness = 0;  // how bright the LED_BUILTIN is
-int fadeAmount = 5;
+int fadeAmount = 1;
 
 
-void on_toggle(const OscMessage& m) {
-  Serial.printf("%s %d %d %s ", m.remoteIP(), m.remotePort(), m.size(), m.address());
-  int toggle = m.arg<int>(0);
-  Serial.print(toggle);
-  Serial.println();
+// void on_toggle(const OscMessage& m) {
+//   Serial.printf("%s %d %d %s ", m.remoteIP(), m.remotePort(), m.size(), m.address());
+//   int toggle = m.arg<int>(0);
+//   Serial.print(toggle);
+//   Serial.println();
 
-  digitalWrite(LED_BUILTIN, !toggle);
-}
+//   digitalWrite(LED_BUILTIN, !toggle);
+// }
 
 void setup() {
   Serial.begin(115200);
@@ -31,11 +30,11 @@ void setup() {
   Serial.println("\n[*] Creating AP");
   WiFi.mode(WIFI_AP);
   WiFi.softAPConfig(ip, gateway, subnet);
-  WiFi.softAP(ssid, password);
+  WiFi.softAP(NetworkConfig::ssid, NetworkConfig::password, 1, 0, 20);
   Serial.print("[+] AP Created with IP Gateway ");
   Serial.println(WiFi.softAPIP());
 
-  OscWiFi.subscribe(recv_port, "/1/toggle1", on_toggle);
+  OscWiFi.subscribe(NetworkConfig::osc_from_ctl, "/slider1", slider_value);
 
   pinMode(LED_BUILTIN, OUTPUT);
 }
@@ -49,6 +48,9 @@ void loop() {
     fadeAmount = -fadeAmount;
   }
 
+  OscWiFi.send(GET_OBJ_IP(0), NetworkConfig::osc_from_ap, "/1/brightness", brightness);
+
+  analogWrite(LED_BUILTIN, (int)(slider_value*255));
+
   delay(10);
-  OscWiFi.send(host1, send_port, "/1/brightness", brightness);
 }
