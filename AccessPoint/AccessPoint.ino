@@ -1,4 +1,5 @@
 #include <ArduinoOSCWiFi.h>
+#include <string.h>
 
 #include "../NetworkConfig.h"
 
@@ -15,14 +16,14 @@ int brightness = 0;  // how bright the LED_BUILTIN is
 int fadeAmount = 1;
 
 
-// void on_toggle(const OscMessage& m) {
-//   Serial.printf("%s %d %d %s ", m.remoteIP(), m.remotePort(), m.size(), m.address());
-//   int toggle = m.arg<int>(0);
-//   Serial.print(toggle);
-//   Serial.println();
-
-//   digitalWrite(LED_BUILTIN, !toggle);
-// }
+void to_acid_osc(const OscMessage& m) {
+  String adr = m.address();
+  int id = (int)m.arg<float>(0);
+  float param = m.arg<float>(1);
+  Serial.println(adr);
+  Serial.printf("id %d param %f\n", id, param);
+  OscWiFi.send(GET_ACID_IP(id), NetworkConfig::osc_from_ap, adr, param);
+}
 
 void setup() {
   Serial.begin(115200);
@@ -35,6 +36,7 @@ void setup() {
   Serial.println(WiFi.softAPIP());
 
   OscWiFi.subscribe(NetworkConfig::osc_from_ctl, "/slider1", slider_value);
+  OscWiFi.subscribe(NetworkConfig::osc_from_ctl, "/toAcid/*", to_acid_osc);
 
   pinMode(LED_BUILTIN, OUTPUT);
 }
@@ -48,7 +50,7 @@ void loop() {
     fadeAmount = -fadeAmount;
   }
 
-  OscWiFi.send(GET_OBJ_IP(0), NetworkConfig::osc_from_ap, "/1/brightness", brightness);
+  OscWiFi.send(GET_ACID_IP(0), NetworkConfig::osc_from_ap, "/1/brightness", brightness);
 
   analogWrite(LED_BUILTIN, (int)(slider_value*255));
 

@@ -108,8 +108,8 @@ typedef struct State {
 		// the main sample loop;
 		while ((__n--)) {
 			const t_sample in1 = (*(__in1++));
-			t_sample phasor_1 = __m_phasor_3(m_midi_cc_2, samples_to_seconds);
-			double sample_index_4 = (phasor_1 * (loop_wav_dim - 1));
+			t_sample phasor_399 = __m_phasor_3(m_midi_cc_2, samples_to_seconds);
+			double sample_index_4 = (phasor_399 * (loop_wav_dim - 1));
 			int index_trunc_5 = fixnan(floor(sample_index_4));
 			double index_fract_6 = (sample_index_4 - index_trunc_5);
 			int index_trunc_7 = (index_trunc_5 + 1);
@@ -123,11 +123,11 @@ typedef struct State {
 			double read_loop_wav_14 = ((chan_ignore_13 || index_ignore_8) ? 0 : m_loop_wav_1.read(index_trunc_5, 1));
 			double read_loop_wav_15 = ((chan_ignore_13 || index_ignore_9) ? 0 : m_loop_wav_1.read(index_trunc_7, 1));
 			double readinterp_16 = linear_interp(index_fract_6, read_loop_wav_14, read_loop_wav_15);
-			t_sample sample_loop_wav_2 = readinterp_12;
-			t_sample sample_loop_wav_3 = readinterp_16;
-			t_sample index_loop_wav_4 = sample_index_4;
-			t_sample out2 = sample_loop_wav_3;
-			t_sample out1 = sample_loop_wav_2;
+			t_sample sample_loop_wav_400 = readinterp_12;
+			t_sample sample_loop_wav_401 = readinterp_16;
+			t_sample index_loop_wav_402 = sample_index_4;
+			t_sample out1 = sample_loop_wav_400;
+			t_sample out2 = sample_loop_wav_401;
 			// assign results to output buffer;
 			(*(__out1++)) = out1;
 			(*(__out2++)) = out2;
