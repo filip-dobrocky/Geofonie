@@ -1,0 +1,174 @@
+{
+	"patcher" : 	{
+		"fileversion" : 1,
+		"appversion" : 		{
+			"major" : 8,
+			"minor" : 6,
+			"revision" : 1,
+			"architecture" : "x64",
+			"modernui" : 1
+		}
+,
+		"classnamespace" : "dsp.gen",
+		"rect" : [ 34.0, 77.0, 1468.0, 705.0 ],
+		"bglocked" : 0,
+		"openinpresentation" : 0,
+		"default_fontsize" : 12.0,
+		"default_fontface" : 0,
+		"default_fontname" : "Arial",
+		"gridonopen" : 1,
+		"gridsize" : [ 15.0, 15.0 ],
+		"gridsnaponopen" : 1,
+		"objectsnaponopen" : 1,
+		"statusbarvisible" : 2,
+		"toolbarvisible" : 1,
+		"lefttoolbarpinned" : 0,
+		"toptoolbarpinned" : 0,
+		"righttoolbarpinned" : 0,
+		"bottomtoolbarpinned" : 0,
+		"toolbars_unpinned_last_save" : 0,
+		"tallnewobj" : 0,
+		"boxanimatetime" : 200,
+		"enablehscroll" : 1,
+		"enablevscroll" : 1,
+		"devicewidth" : 0.0,
+		"description" : "",
+		"digest" : "",
+		"tags" : "",
+		"style" : "",
+		"subpatcher_template" : "",
+		"assistshowspatchername" : 0,
+		"boxes" : [ 			{
+				"box" : 				{
+					"id" : "obj-1",
+					"maxclass" : "newobj",
+					"numinlets" : 0,
+					"numoutlets" : 2,
+					"outlettype" : [ "", "" ],
+					"patching_rect" : [ 527.0, 8.0, 146.0, 22.0 ],
+					"text" : "data loop_wav 1660996 2"
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"id" : "obj-18",
+					"maxclass" : "newobj",
+					"numinlets" : 0,
+					"numoutlets" : 1,
+					"outlettype" : [ "" ],
+					"patching_rect" : [ 125.0, 162.0, 378.0, 22.0 ],
+					"text" : "param midi_cc6 @min 0 @max 1 @default 0"
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"id" : "obj-17",
+					"maxclass" : "newobj",
+					"numinlets" : 0,
+					"numoutlets" : 1,
+					"outlettype" : [ "" ],
+					"patching_rect" : [ 125.0, 138.0, 378.0, 22.0 ],
+					"text" : "param midi_cc5 @min 0 @max 1 @default 0"
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"id" : "obj-16",
+					"maxclass" : "newobj",
+					"numinlets" : 0,
+					"numoutlets" : 1,
+					"outlettype" : [ "" ],
+					"patching_rect" : [ 125.0, 114.0, 378.0, 22.0 ],
+					"text" : "param midi_cc4 @min 0 @max 1 @default 0"
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"id" : "obj-15",
+					"maxclass" : "newobj",
+					"numinlets" : 0,
+					"numoutlets" : 1,
+					"outlettype" : [ "" ],
+					"patching_rect" : [ 125.0, 90.0, 378.0, 22.0 ],
+					"text" : "param midi_cc3 @min -50 @max 50 @default 0"
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"id" : "obj-14",
+					"maxclass" : "newobj",
+					"numinlets" : 0,
+					"numoutlets" : 1,
+					"outlettype" : [ "" ],
+					"patching_rect" : [ 125.0, 66.0, 378.0, 22.0 ],
+					"text" : "param midi_cc2 @min 2 @max 500 @default 100"
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"id" : "obj-13",
+					"maxclass" : "newobj",
+					"numinlets" : 0,
+					"numoutlets" : 1,
+					"outlettype" : [ "" ],
+					"patching_rect" : [ 125.0, 42.0, 268.0, 22.0 ],
+					"text" : "param midi_cc1 @min 0 @max 300 @default 20"
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"id" : "obj-9",
+					"linecount" : 6,
+					"maxclass" : "comment",
+					"numinlets" : 1,
+					"numoutlets" : 0,
+					"patching_rect" : [ 527.0, 42.0, 231.0, 103.0 ],
+					"text" : "density (0-100 Hz)  \ncc2 grain size (2ms - cc3 500ms)\ncc4 grain pitch (-50 - +50st)\ncc5 position (0-1)\ncc6 spread (0-1)\ncc7 spray (0-1)\n"
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"code" : "get_trigger(_count, _instance, _dat) {\r\n\tcurrent = _count == _instance;\r\n\tprevious = peek(_dat, _instance, 0);\r\n\tpoke(_dat, current, _instance, 0);\r\n\treturn (current - previous) == 1;\r\n}\r\n\r\nget_count(_dat, _instance, _trig) {\r\n\tcount = peek(_dat, _instance, 1);\r\n\tcount = _trig ? 0 : count + 1;\r\n\tpoke(_dat, count, _instance, 1);\r\n\treturn count;\r\n}\r\n\r\nlatchy(_trigger, _val, _dat, _instance, _channel) {\r\n\tval = _val;\r\n\tif (_trigger) {\r\n\t\tpoke(_dat, val, _instance, _channel);\r\n\t}\r\n\telse {\r\n\t\tval = peek(_dat, _instance, _channel);\r\n\t}\r\n\treturn val;\r\n}\r\n\r\nData info(30, 5);\r\n\r\n\r\nvoices = 10;\r\n\r\ndensity = midi_cc1;\r\ngrain_size = midi_cc2;\r\npitch = midi_cc3;\r\nposition = midi_cc4;\r\nspread = midi_cc5;\r\nspray = midi_cc6;\r\n\r\np = delta(phasor(density)) < 0;\r\n\r\nc = counter(p, in7, voices);\r\n\r\nsum = 0;\r\n\r\nfor (i = 0; i < voices; i += 1) {\r\n\ttrigger = get_trigger(c, i, info);\r\n\tcount = get_count(info, i, trigger);\r\n\t\r\n\tsz = mstosamps(grain_size);\r\n\tsz = latchy(trigger, sz, info, i, 2);\r\n\tphase = min(1, count / sz);\r\n\t\r\n\tamp = 0.5 - 0.5 * cos(phase * twopi); // hann window\r\n\t\r\n\tsprd = noise() * 12;\r\n\tpitch_hz = pow(2, (pitch + sprd) / 12);\r\n\tpitch_hz = latchy(trigger, pitch_hz, info, i, 3);\r\n\tspry = noise() * 0.5;\r\n\tstart_pos = (position + spry) * dim(loop_wav);\r\n\tstart_pos = latchy(trigger, start_pos, info, i, 4);\r\n\tplayhead = start_pos + (count * pitch_hz);\r\n\tsmp = peek(loop_wav, playhead, 0, index=\"samples\", interp=\"cubic\", boundmode=\"wrap\");\r\n\t\r\n\t//grain = amp * smp;\r\n\tgrain = amp * smp;\r\n\t\r\n\tsum += grain;\r\n}\r\n\r\n\r\nout1 = sum;",
+					"fontface" : 0,
+					"fontname" : "<Monospaced>",
+					"fontsize" : 12.0,
+					"id" : "obj-5",
+					"maxclass" : "codebox",
+					"numinlets" : 7,
+					"numoutlets" : 1,
+					"outlettype" : [ "" ],
+					"patching_rect" : [ 50.0, 247.0, 621.0, 379.0 ]
+				}
+
+			}
+, 			{
+				"box" : 				{
+					"id" : "obj-4",
+					"maxclass" : "newobj",
+					"numinlets" : 1,
+					"numoutlets" : 0,
+					"patching_rect" : [ 50.0, 658.0, 35.0, 22.0 ],
+					"text" : "out 1"
+				}
+
+			}
+ ],
+		"lines" : [ 			{
+				"patchline" : 				{
+					"destination" : [ "obj-4", 0 ],
+					"source" : [ "obj-5", 0 ]
+				}
+
+			}
+ ]
+	}
+
+}
