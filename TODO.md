@@ -14,7 +14,7 @@
 
 - [x] WiFi
     * [x] move all config to header
-    * [x] test max connections
+    * [ ] test max connections
 - [x] MIDI CC send Timer
 - [ ] Touch OSC
     * [x] Android diconnecting

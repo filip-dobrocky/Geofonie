@@ -50,7 +50,7 @@ int sensor_value = 0;
 int stepper_speed = 1;
 
 // Speed settings
-const int SPEED_MIN = 100;
+const int SPEED_MIN = 10;
 const int SPEED_MAX = 10000;
 const int ACCELERATION = 500;
 const int DECELERATION = 800;
@@ -67,10 +67,29 @@ int normalize_distance(int distance, int radius, int angle) {
   return distance - difference;
 }
 
+void stepper_start(int dir) {
+  digitalWrite(EN_PIN, LOW);
+  stepper.startJogging(dir);
+}
+
+void stepper_stop() {
+  digitalWrite(EN_PIN, HIGH);
+  stepper.stopJogging();
+  delay(1000);
+  digitalWrite(EN_PIN, HIGH);
+}
+
+void servo_tilt(int angle) {
+  if (!servo.attached()) {
+    servo.attach(SERVO_PIN);
+  }
+
+  servo.write(angle);
+  
+  servo.detach();
+}
+
 void IRAM_ATTR midi_ISR() {
-  // int cc_value = map(led_brightness, 0, 255, 0, 127);
-  // Serial.print("MIDI: ");
-  // Serial.println(cc_value);
   midi1.sendControlChange(1, SCALE_TO_MIDI(sensor_value, 10, 800), 1);
 }
 
@@ -126,22 +145,19 @@ void setup() {
   timerAttachInterrupt(midi_timer, &midi_ISR);
   timerAlarm(midi_timer, 10, true, 0);
 
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(STEP_PIN, OUTPUT);
+  pinMode(DIR_PIN, OUTPUT);
+  pinMode(EN_PIN, OUTPUT);
+
   stepper.connectToPins(STEP_PIN, DIR_PIN);
   stepper.setSpeedInStepsPerSecond(SPEED_MIN);
   stepper.setAccelerationInStepsPerSecondPerSecond(ACCELERATION);
   stepper.setDecelerationInStepsPerSecondPerSecond(DECELERATION);
   stepper.startAsService(1);
 
-  stepper.startJogging(rotation_direction);
+  stepper_start(rotation_direction);
 
-  servo.attach(SERVO_PIN);
-
-  pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(STEP_PIN, OUTPUT);
-  pinMode(DIR_PIN, OUTPUT);
-  pinMode(EN_PIN, OUTPUT);
-
-  digitalWrite(EN_PIN, LOW);
   digitalWrite(DIR_PIN, HIGH);
 }
 
@@ -159,33 +175,33 @@ void loop() {
   static uint32_t speed = SPEED_MIN;
   static uint32_t stepper_elapsed = millis();
   if (millis() - stepper_elapsed >= 2000) {
-      rotation_direction *= -1;
-      speed += 500;
-      if (speed >= SPEED_MAX)
-        speed = SPEED_MIN;
-      stepper.setSpeedInStepsPerSecond(speed);
-      Serial.print("Stepper speed: ");
-      Serial.println(speed);
+    rotation_direction *= -1;
+    speed += 500;
+    if (speed >= SPEED_MAX)
+      speed = SPEED_MIN;
+    stepper.setSpeedInStepsPerSecond(speed);
+    Serial.print("Stepper speed: ");
+    Serial.println(speed);
 
-      stepper_elapsed = millis();
+    stepper_elapsed = millis();
   }
 
   static uint32_t servo_elapsed = millis();
   if (millis() - servo_elapsed >= 50) {
-      const int max_angle = 30;
-      const int center = 90;
-      static int angle = center;
-      static int direction = 1;
+    const int max_angle = 30;
+    const int center = 90;
+    static int angle = center;
+    static int direction = 1;
 
-      servo.write(angle);
-      angle += direction;
+    servo_tilt(angle);
+    angle += direction;
 
-      if (abs(center - angle) >= max_angle)
-        direction = -direction;
-      Serial.print("Servo angle: ");
-      Serial.println(angle);
+    if (abs(center - angle) >= max_angle)
+      direction = -direction;
+    Serial.print("Servo angle: ");
+    Serial.println(angle);
 
-      servo_elapsed = millis();
+    servo_elapsed = millis();
   }
 
 }
