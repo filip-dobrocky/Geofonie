@@ -13,7 +13,7 @@
 // Macros
 
 #define SCALE_TO_MIDI(val, min, max) map(constrain(val, min, max), min, max, 0, 127)
-#define FLOAT_TO_MIDI(val) int(val * 127.0)
+#define FLOAT_TO_MIDI(val) constrain(int(val * 127.0), 0, 127)
 
 // Globals
 

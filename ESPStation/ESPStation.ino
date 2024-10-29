@@ -27,6 +27,14 @@
 // Macros
 
 #define SCALE_TO_MIDI(val, min, max) map(constrain(val, min, max), min, max, 0, 127)
+#define FLOAT_TO_MIDI(val) constrain(int(val * 127.0), 0, 127)
+
+// Enums
+
+enum TransportMode {
+  LINEAR,
+  ALTERNATING
+};
 
 // Globals
 
@@ -54,6 +62,19 @@ const int SPEED_MIN = 10;
 const int SPEED_MAX = 10000;
 const int ACCELERATION = 500;
 const int DECELERATION = 800;
+
+// Transport params
+int center_angle = 0;
+int angle_dif = 30;
+int angle = center_angle - angle_dif;
+int servo_direction = 1;
+enum TransportMode transport_mode = LINEAR;
+float loop_length = 0.1;
+
+// Midi controls
+uint8_t start_pos;
+uint8_t end_pos;
+uint8_t loop_pos = 0;
 
 ESP_FlexyStepper stepper;
 int rotation_direction = 1;
@@ -89,8 +110,47 @@ void servo_tilt(int angle) {
   servo.detach();
 }
 
+void transport() {
+  // calculate servo speed based on stepper speed
+  uint16_t servo_period = SPEED_MAX / stepper_speed;
+  const uint16_t min_angle = center_angle - angle_dif;
+  const uint16_t max_angle = center_angle + angle_dif;
+
+  // servo control
+  static uint32_t servo_elapsed = millis();
+  if (millis() - servo_elapsed >= servo_period) {
+    servo_tilt(angle);
+    angle += servo_direction;
+
+    if (transport_mode == LINEAR) {
+      if (servo_direction > 0 && angle >= max_angle) {
+        angle = min_angle;
+      } else if (servo_direction < 0 && angle <= min_angle) {
+        angle = max_angle;
+      }
+    } else if (transport_mode == ALTERNATING) {
+      if (abs(center_angle - angle) >= max_angle) {
+        servo_direction = -direction;
+      }
+    }
+
+    servo_period = millis();
+  }
+
+  start_pos = SCALE_TO_MIDI(angle, min_angle, max_angle);
+  end_pos = (start_pos + FLOAT_TO_MIDI(loop_length)) % 128;
+}
+
+
 void IRAM_ATTR midi_ISR() {
+  // CC 1 - sensor value
   midi1.sendControlChange(1, SCALE_TO_MIDI(sensor_value, 10, 800), 1);
+  // CC 2 - loop start position
+  midi1.sendControlChange(2, start_pos, 1);
+  // CC 3 - loop end position
+  midi1.sendControlChange(3, end_pos, 1);
+  // CC 4 - loop speed
+  midi1.sendControlChange(4, SCALE_TO_MIDI(stepper_speed, SPEED_MIN, SPEED_MAX), 1);
 }
 
 
@@ -165,13 +225,13 @@ void loop() {
   OscWiFi.update();
 
   sensor.read();
-  sensor_value = sensor_filter.filter(sensor.ranging_data.range_mm);  
+  sensor_value = normalize_distance(sensor_filter.filter(sensor.ranging_data.range_mm), 250, angle);  
   Serial.print("Sensor distance: ");
   Serial.println(sensor_value);
 
   digitalWrite(LED_BUILTIN, led_brightness > 127);
 
-
+  // stepper acceleration test
   static uint32_t speed = SPEED_MIN;
   static uint32_t stepper_elapsed = millis();
   if (millis() - stepper_elapsed >= 2000) {
@@ -186,22 +246,5 @@ void loop() {
     stepper_elapsed = millis();
   }
 
-  static uint32_t servo_elapsed = millis();
-  if (millis() - servo_elapsed >= 50) {
-    const int max_angle = 30;
-    const int center = 90;
-    static int angle = center;
-    static int direction = 1;
-
-    servo_tilt(angle);
-    angle += direction;
-
-    if (abs(center - angle) >= max_angle)
-      direction = -direction;
-    Serial.print("Servo angle: ");
-    Serial.println(angle);
-
-    servo_elapsed = millis();
-  }
-
+  transport();
 }
