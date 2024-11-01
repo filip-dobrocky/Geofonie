@@ -20,9 +20,43 @@ void to_acid_osc(const OscMessage& m) {
   String adr = m.address();
   int id = (int)m.arg<float>(0);
   float param = m.arg<float>(1);
-  Serial.println(adr);
-  Serial.printf("id %d param %f\n", id, param);
+  
   OscWiFi.send(GET_ACID_IP(id), NetworkConfig::osc_from_ap, adr, param);
+
+  Serial.print(adr);
+  Serial.printf(" id %d param %f\n", id, param);
+}
+
+void to_roto_osc(const OscMessage& m) {
+  String adr = m.address();
+  int id = (int)m.arg<float>(0);
+  float param = m.arg<float>(1);
+  
+  OscWiFi.send(GET_ROTO_IP(id), NetworkConfig::osc_from_ap, adr, param);
+
+  Serial.print(adr);
+  Serial.printf(" id %d param %f\n", id, param);
+}
+
+void global_osc(const OscMessage& m) {
+  String adr = m.address();
+  float param = m.arg<float>(0);
+
+  for (int i = 0; i < 5; i++) {
+    const char* ip = GET_ROTO_IP(i);
+    if (adr.endsWith("/rotSpeed")) {
+      OscWiFi.send(GET_ROTO_IP(i), NetworkConfig::osc_from_ap, adr, param);
+    }
+  }
+  
+  for (int i = 0; i < 5; i++) {
+    const char* ip = GET_ACID_IP(i);
+  }
+
+//   OscWiFi.send(GET_ROTO_IP(id), NetworkConfig::osc_from_ap, adr, param);
+
+//   Serial.print(adr);
+//   Serial.printf(" id %d param %f\n", id, param);
 }
 
 void setup() {
@@ -37,6 +71,9 @@ void setup() {
 
   OscWiFi.subscribe(NetworkConfig::osc_from_ctl, "/slider1", slider_value);
   OscWiFi.subscribe(NetworkConfig::osc_from_ctl, "/toAcid/*", to_acid_osc);
+  OscWiFi.subscribe(NetworkConfig::osc_from_ctl, "/toRoto/*/*", to_roto_osc);
+  OscWiFi.subscribe(NetworkConfig::osc_from_ctl, "/global/*", global_osc);
+
 
   pinMode(LED_BUILTIN, OUTPUT);
 }

@@ -1,0 +1,12 @@
+{
+	"name":"roto",
+	"defines": {
+		"OOPSY_TARGET_HAS_MIDI_INPUT": 1
+	},
+	"components": {
+		"led": {
+			"component": "Led",
+			"pin": 21
+		}
+	}
+}

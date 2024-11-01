@@ -98,4 +98,7 @@ void loop() {
   OscWiFi.update();
 
   analogWrite(LED_BUILTIN, led_brightness);
+
+  Serial.println(osc_param1);
+  Serial.println(osc_param2);
 }
