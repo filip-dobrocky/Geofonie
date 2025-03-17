@@ -68,20 +68,25 @@ static const int GENLIB_LOOPCOUNT_BAIL = 100000;
 // The State struct contains all the state and procedures for the gendsp kernel
 typedef struct State {
 	CommonState __commonstate;
+	Phasor __m_phasor_4;
+	SineCycle __m_cycle_3;
+	SineData __sinedata;
 	int __exception;
 	int vectorsize;
 	t_sample m_midi_cc_1;
+	t_sample samples_to_seconds;
 	t_sample samplerate;
 	t_sample m_midi_cc_2;
-	t_sample __m_slide_3;
 	// re-initialize all member variables;
 	inline void reset(t_param __sr, int __vs) {
 		__exception = 0;
 		vectorsize = __vs;
 		samplerate = __sr;
-		m_midi_cc_1 = ((int)2);
-		m_midi_cc_2 = ((int)100);
-		__m_slide_3 = 0;
+		m_midi_cc_1 = ((int)100);
+		m_midi_cc_2 = ((int)2);
+		__m_cycle_3.reset(samplerate, 0);
+		samples_to_seconds = (1 / samplerate);
+		__m_phasor_4.reset(0);
 		genlib_reset_complete(this);
 		
 	};
@@ -99,20 +104,23 @@ typedef struct State {
 			return __exception;
 			
 		};
-		t_sample mstosamps_8 = (((int)1) * (samplerate * 0.001));
-		t_sample mstosamps_9 = (((int)20) * (samplerate * 0.001));
-		t_sample iup_4 = (1 / maximum(1, abs(mstosamps_8)));
-		t_sample idown_5 = (1 / maximum(1, abs(mstosamps_9)));
+		samples_to_seconds = (1 / samplerate);
 		// the main sample loop;
 		while ((__n--)) {
 			const t_sample in1 = (*(__in1++));
-			t_sample out1 = in1;
-			__m_slide_3 = fixdenorm((__m_slide_3 + (((in1 > __m_slide_3) ? iup_4 : idown_5) * (in1 - __m_slide_3))));
-			t_sample slide_7 = __m_slide_3;
-			t_sample pow_3 = safepow(slide_7, ((int)2));
-			t_sample mul_12 = (pow_3 * ((int)10));
-			t_sample rsub_2 = (((int)1) - mul_12);
-			t_sample out2 = rsub_2;
+			__m_cycle_3.freq(m_midi_cc_1);
+			t_sample cycle_143 = __m_cycle_3(__sinedata);
+			t_sample cycleindex_144 = __m_cycle_3.phase();
+			if ((((int)0) != 0)) {
+				__m_phasor_4.phase = 0;
+				
+			};
+			t_sample phasor_142 = __m_phasor_4(m_midi_cc_2, samples_to_seconds);
+			t_sample pow_141 = safepow(phasor_142, ((int)2));
+			t_sample mul_139 = (cycle_143 * pow_141);
+			t_sample out1 = mul_139;
+			t_sample rsub_140 = (((int)1) - pow_141);
+			t_sample out2 = rsub_140;
 			// assign results to output buffer;
 			(*(__out1++)) = out1;
 			(*(__out2++)) = out2;
@@ -121,11 +129,11 @@ typedef struct State {
 		return __exception;
 		
 	};
-	inline void set_midi_cc2(t_param _value) {
-		m_midi_cc_1 = (_value < 0.1 ? 0.1 : (_value > 12 ? 12 : _value));
-	};
 	inline void set_midi_cc1(t_param _value) {
-		m_midi_cc_2 = (_value < 60 ? 60 : (_value > 600 ? 600 : _value));
+		m_midi_cc_1 = (_value < 60 ? 60 : (_value > 600 ? 600 : _value));
+	};
+	inline void set_midi_cc2(t_param _value) {
+		m_midi_cc_2 = (_value < 0.1 ? 0.1 : (_value > 12 ? 12 : _value));
 	};
 	
 } State;
@@ -180,8 +188,8 @@ void setparameter(CommonState *cself, long index, t_param value, void *ref) {
 void getparameter(CommonState *cself, long index, t_param *value) {
 	State *self = (State *)cself;
 	switch (index) {
-		case 0: *value = self->m_midi_cc_2; break;
-		case 1: *value = self->m_midi_cc_1; break;
+		case 0: *value = self->m_midi_cc_1; break;
+		case 1: *value = self->m_midi_cc_2; break;
 		
 		default: break;
 	}
@@ -264,11 +272,11 @@ void *create(t_param sr, long vs) {
 	self->__commonstate.vs = vs;
 	self->__commonstate.params = (ParamInfo *)genlib_sysmem_newptr(2 * sizeof(ParamInfo));
 	self->__commonstate.numparams = 2;
-	// initialize parameter 0 ("m_midi_cc_2")
+	// initialize parameter 0 ("m_midi_cc_1")
 	pi = self->__commonstate.params + 0;
 	pi->name = "midi_cc1";
 	pi->paramtype = GENLIB_PARAMTYPE_FLOAT;
-	pi->defaultvalue = self->m_midi_cc_2;
+	pi->defaultvalue = self->m_midi_cc_1;
 	pi->defaultref = 0;
 	pi->hasinputminmax = false;
 	pi->inputmin = 0;
@@ -278,11 +286,11 @@ void *create(t_param sr, long vs) {
 	pi->outputmax = 600;
 	pi->exp = 0;
 	pi->units = "";		// no units defined
-	// initialize parameter 1 ("m_midi_cc_1")
+	// initialize parameter 1 ("m_midi_cc_2")
 	pi = self->__commonstate.params + 1;
 	pi->name = "midi_cc2";
 	pi->paramtype = GENLIB_PARAMTYPE_FLOAT;
-	pi->defaultvalue = self->m_midi_cc_1;
+	pi->defaultvalue = self->m_midi_cc_2;
 	pi->defaultref = 0;
 	pi->hasinputminmax = false;
 	pi->inputmin = 0;

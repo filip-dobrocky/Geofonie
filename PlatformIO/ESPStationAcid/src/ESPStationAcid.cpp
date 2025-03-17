@@ -1,26 +1,26 @@
+#include <Arduino.h>
 #include <ArduinoOSCWiFi.h>
 #include <MIDI.h>
 
-#include "../NetworkConfig.h"
+#include "NetworkConfig.h"
 
-// Constants
+// ---- Constants ----
 
-#define OBJ_ID 0
+#define OBJ_ID 4
 
 #define RX_PIN D7
 #define TX_PIN D8
 
-// Macros
+// ---- Macros ----
 
 #define SCALE_TO_MIDI(val, min, max) map(constrain(val, min, max), min, max, 0, 127)
 #define FLOAT_TO_MIDI(val) constrain(int(val * 127.0), 0, 127)
 
-// Globals
+// ---- Globals ----
 
 HardwareSerial MidiSerial(1);
 
 MIDI_CREATE_INSTANCE(HardwareSerial, MidiSerial, midi1);
-
 
 hw_timer_t *midi_timer = NULL;
 
@@ -37,17 +37,11 @@ float osc_param4;
 float osc_param5;
 float osc_param6;
 
-//Functions
+// ---- Function declarations ----
 
-void IRAM_ATTR midi_ISR() {
-  midi1.sendControlChange(1, FLOAT_TO_MIDI(osc_param1), 1);
-  midi1.sendControlChange(2, FLOAT_TO_MIDI(osc_param2), 1);
-  midi1.sendControlChange(3, FLOAT_TO_MIDI(osc_param3), 1);
-  midi1.sendControlChange(4, FLOAT_TO_MIDI(osc_param4), 1);
-  midi1.sendControlChange(5, FLOAT_TO_MIDI(osc_param5), 1);
-  midi1.sendControlChange(6, FLOAT_TO_MIDI(osc_param6), 1);
-}
-
+void IRAM_ATTR midi_ISR();
+void setup();
+void loop();
 
 void setup() {
   MidiSerial.setPins(RX_PIN, TX_PIN);
@@ -101,4 +95,15 @@ void loop() {
 
   Serial.println(osc_param1);
   Serial.println(osc_param2);
+}
+
+// ---- Function definitions ----
+
+void IRAM_ATTR midi_ISR() {
+  midi1.sendControlChange(1, FLOAT_TO_MIDI(osc_param1), 1);
+  midi1.sendControlChange(2, FLOAT_TO_MIDI(osc_param2), 1);
+  midi1.sendControlChange(3, FLOAT_TO_MIDI(osc_param3), 1);
+  midi1.sendControlChange(4, FLOAT_TO_MIDI(osc_param4), 1);
+  midi1.sendControlChange(5, FLOAT_TO_MIDI(osc_param5), 1);
+  midi1.sendControlChange(6, FLOAT_TO_MIDI(osc_param6), 1);
 }

@@ -1,0 +1,71 @@
+# OSC messages:
+    [obj_id]: 0, 1, 2, 3, 4
+    [value] : 0..1
+
+## Roto objects
+
+### Rotation
+#### Speed:
+`/toRoto/rotation/speed [obj_id] [value]`  
+#### Direction:
+`/toRoto/rotation/direction [obj_id] [value]`  
+
+### Servo
+#### Center position:  
+`/toRoto/servo/center [obj_id] [value]`  
+#### Angle range (0 = no movement):  
+`/toRoto/servo/angle [obj_id] [value]`  
+#### Movement mode (0 / 1 - alternating / linear):  
+`/toRoto/servo/mode [obj_id] [value]`  
+#### Movement direction (0 / 1):  
+`/toRoto/servo/direction [obj_id] [value]`  
+#### Servo calibration (0 / 1):
+Stop automatic movement and set angle based on `angle` message  
+`/toRoto/servo/calibrate [obj_id] [value]`  
+
+### Sensor calibration
+#### Lower limit:
+`/toRoto/calibration/minDist [obj_id] [value]`  
+#### Upper limit:
+`/toRoto/calibration/maxDist [obj_id] [value]`  
+
+#### Value read from sensor (0..1):
+Sent from object to all devices  
+`/info/reading [obj_id] [value]`  
+
+### Misc parameters:
+Sent to Daisy Seed as MIDI CC 5-7 to be used as sound synthesis parameters  
+`/toRoto/misc/1 [obj_id] [value]`  
+`/toRoto/misc/2 [obj_id] [value]`  
+`/toRoto/misc/3 [obj_id] [value]`  
+
+## Acid objects
+
+Generic parameters sent to Daisy Seed as MIDI CC 1-6  
+`/toAcid/param1 [obj_id] [value]`  
+`/toAcid/param2 [obj_id] [value]`  
+`/toAcid/param3 [obj_id] [value]`  
+`/toAcid/param4 [obj_id] [value]`  
+`/toAcid/param5 [obj_id] [value]`  
+`/toAcid/param6 [obj_id] [value]`  
+
+## Global
+### Rotation speed
+`/global/rotSpeed [value]`
+### Autonomous mode
+Automatic randomization of `/toAcid` parameters
+#### Auto mode on/off
+`/global/auto [value]`
+#### Auto mode density
+`/global/autoDensity [value]`
+
+# Network config
+
+Network parameters are defined in `NetworkConfig.h`
+
+SSID: `TrychtyrLOM`  
+Password: `LomLomLom`  
+  
+Port for sending OSC messages to AP (objects): `54345`  
+Port for listening to `/info` messages: `54355`  
+Port for sending to individual objects (IPs are defined in the header): `54350`  

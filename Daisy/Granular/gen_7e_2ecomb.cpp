@@ -1,6 +1,6 @@
-#include "piezo_test.h"
+#include "gen_7e_2ecomb.h"
 
-namespace piezo_test {
+namespace gen_7e_2ecomb {
 
 /****************************************************************************************
 Copyright (c) 2023 Cycling '74
@@ -68,29 +68,18 @@ static const int GENLIB_LOOPCOUNT_BAIL = 100000;
 // The State struct contains all the state and procedures for the gendsp kernel
 typedef struct State {
 	CommonState __commonstate;
-	Phasor __m_phasor_5;
-	SineCycle __m_cycle_4;
-	SineData __sinedata;
+	Delay m_delay_2;
+	Delay m_delay_1;
 	int __exception;
 	int vectorsize;
-	t_sample samples_to_seconds;
-	t_sample m_midi_cc_3;
-	t_sample m_midi_cc_1;
-	t_sample m_midi_cc_2;
 	t_sample samplerate;
-	t_sample __m_slide_6;
 	// re-initialize all member variables;
 	inline void reset(t_param __sr, int __vs) {
 		__exception = 0;
 		vectorsize = __vs;
 		samplerate = __sr;
-		m_midi_cc_1 = ((int)0);
-		m_midi_cc_2 = ((int)100);
-		m_midi_cc_3 = ((int)2);
-		__m_cycle_4.reset(samplerate, 0);
-		samples_to_seconds = (1 / samplerate);
-		__m_phasor_5.reset(0);
-		__m_slide_6 = 0;
+		m_delay_1.reset("m_delay_1", ((int)1000));
+		m_delay_2.reset("m_delay_2", ((int)1000));
 		genlib_reset_complete(this);
 		
 	};
@@ -99,55 +88,44 @@ typedef struct State {
 		vectorsize = __n;
 		const t_sample * __in1 = __ins[0];
 		const t_sample * __in2 = __ins[1];
+		const t_sample * __in3 = __ins[2];
+		const t_sample * __in4 = __ins[3];
+		const t_sample * __in5 = __ins[4];
 		t_sample * __out1 = __outs[0];
-		t_sample * __out2 = __outs[1];
 		if (__exception) {
 			return __exception;
 			
-		} else if (( (__in1 == 0) || (__in2 == 0) || (__out1 == 0) || (__out2 == 0) )) {
+		} else if (( (__in1 == 0) || (__in2 == 0) || (__in3 == 0) || (__in4 == 0) || (__in5 == 0) || (__out1 == 0) )) {
 			__exception = GENLIB_ERR_NULL_BUFFER;
 			return __exception;
 			
 		};
-		samples_to_seconds = (1 / samplerate);
-		t_sample mstosamps_8 = (((int)1) * (samplerate * 0.001));
-		t_sample mstosamps_9 = (((int)20) * (samplerate * 0.001));
-		t_sample iup_7 = (1 / maximum(1, abs(mstosamps_8)));
-		t_sample idown_8 = (1 / maximum(1, abs(mstosamps_9)));
+		t_sample min_3 = (-0.99);
 		// the main sample loop;
 		while ((__n--)) {
 			const t_sample in1 = (*(__in1++));
 			const t_sample in2 = (*(__in2++));
-			__m_cycle_4.freq(m_midi_cc_2);
-			t_sample cycle_40 = __m_cycle_4(__sinedata);
-			t_sample cycleindex_41 = __m_cycle_4.phase();
-			t_sample phasor_39 = __m_phasor_5(m_midi_cc_3, samples_to_seconds);
-			t_sample pow_38 = safepow(phasor_39, ((int)2));
-			t_sample mul_37 = (cycle_40 * pow_38);
-			t_sample mul_36 = (mul_37 * m_midi_cc_1);
-			t_sample out1 = mul_36;
-			__m_slide_6 = fixdenorm((__m_slide_6 + (((in2 > __m_slide_6) ? iup_7 : idown_8) * (in2 - __m_slide_6))));
-			t_sample slide_7 = __m_slide_6;
-			t_sample pow_3 = safepow(slide_7, ((int)2));
-			t_sample mul_23 = (pow_3 * ((int)50));
-			t_sample rsub_2 = (((int)1) - mul_23);
-			t_sample out2 = rsub_2;
+			const t_sample in3 = (*(__in3++));
+			const t_sample in4 = (*(__in4++));
+			const t_sample in5 = (*(__in5++));
+			t_sample mul_6956 = (in1 * in3);
+			t_sample tap_6955 = m_delay_1.read_linear(in2);
+			t_sample mul_6951 = (tap_6955 * in4);
+			t_sample tap_6953 = m_delay_2.read_linear(in2);
+			t_sample clamp_6948 = ((in5 <= min_3) ? min_3 : ((in5 >= ((t_sample)0.99)) ? ((t_sample)0.99) : in5));
+			t_sample mul_6950 = (tap_6953 * clamp_6948);
+			t_sample sub_6949 = ((mul_6951 + mul_6956) - mul_6950);
+			t_sample out1 = sub_6949;
+			m_delay_1.write(in1);
+			m_delay_2.write(sub_6949);
+			m_delay_1.step();
+			m_delay_2.step();
 			// assign results to output buffer;
 			(*(__out1++)) = out1;
-			(*(__out2++)) = out2;
 			
 		};
 		return __exception;
 		
-	};
-	inline void set_midi_cc1(t_param _value) {
-		m_midi_cc_1 = (_value < 0 ? 0 : (_value > 1 ? 1 : _value));
-	};
-	inline void set_midi_cc2(t_param _value) {
-		m_midi_cc_2 = (_value < 50 ? 50 : (_value > 600 ? 600 : _value));
-	};
-	inline void set_midi_cc3(t_param _value) {
-		m_midi_cc_3 = (_value < 0.1 ? 0.1 : (_value > 12 ? 12 : _value));
 	};
 	
 } State;
@@ -159,17 +137,17 @@ typedef struct State {
 
 /// Number of signal inputs and outputs
 
-int gen_kernel_numins = 2;
-int gen_kernel_numouts = 2;
+int gen_kernel_numins = 5;
+int gen_kernel_numouts = 1;
 
 int num_inputs() { return gen_kernel_numins; }
 int num_outputs() { return gen_kernel_numouts; }
-int num_params() { return 3; }
+int num_params() { return 0; }
 
 /// Assistive lables for the signal inputs and outputs
 
-const char *gen_kernel_innames[] = { "in1", "in2" };
-const char *gen_kernel_outnames[] = { "out1", "led" };
+const char *gen_kernel_innames[] = { "in1", "delay", "a", "b", "c" };
+const char *gen_kernel_outnames[] = { "out1" };
 
 /// Invoke the signal process of a State object
 
@@ -190,9 +168,6 @@ void reset(CommonState *cself) {
 void setparameter(CommonState *cself, long index, t_param value, void *ref) {
 	State *self = (State *)cself;
 	switch (index) {
-		case 0: self->set_midi_cc1(value); break;
-		case 1: self->set_midi_cc2(value); break;
-		case 2: self->set_midi_cc3(value); break;
 		
 		default: break;
 	}
@@ -203,9 +178,6 @@ void setparameter(CommonState *cself, long index, t_param value, void *ref) {
 void getparameter(CommonState *cself, long index, t_param *value) {
 	State *self = (State *)cself;
 	switch (index) {
-		case 0: *value = self->m_midi_cc_1; break;
-		case 1: *value = self->m_midi_cc_2; break;
-		case 2: *value = self->m_midi_cc_3; break;
 		
 		default: break;
 	}
@@ -286,50 +258,8 @@ void *create(t_param sr, long vs) {
 	self->__commonstate.numouts = gen_kernel_numouts;
 	self->__commonstate.sr = sr;
 	self->__commonstate.vs = vs;
-	self->__commonstate.params = (ParamInfo *)genlib_sysmem_newptr(3 * sizeof(ParamInfo));
-	self->__commonstate.numparams = 3;
-	// initialize parameter 0 ("m_midi_cc_1")
-	pi = self->__commonstate.params + 0;
-	pi->name = "midi_cc1";
-	pi->paramtype = GENLIB_PARAMTYPE_FLOAT;
-	pi->defaultvalue = self->m_midi_cc_1;
-	pi->defaultref = 0;
-	pi->hasinputminmax = false;
-	pi->inputmin = 0;
-	pi->inputmax = 1;
-	pi->hasminmax = true;
-	pi->outputmin = 0;
-	pi->outputmax = 1;
-	pi->exp = 0;
-	pi->units = "";		// no units defined
-	// initialize parameter 1 ("m_midi_cc_2")
-	pi = self->__commonstate.params + 1;
-	pi->name = "midi_cc2";
-	pi->paramtype = GENLIB_PARAMTYPE_FLOAT;
-	pi->defaultvalue = self->m_midi_cc_2;
-	pi->defaultref = 0;
-	pi->hasinputminmax = false;
-	pi->inputmin = 0;
-	pi->inputmax = 1;
-	pi->hasminmax = true;
-	pi->outputmin = 50;
-	pi->outputmax = 600;
-	pi->exp = 0;
-	pi->units = "";		// no units defined
-	// initialize parameter 2 ("m_midi_cc_3")
-	pi = self->__commonstate.params + 2;
-	pi->name = "midi_cc3";
-	pi->paramtype = GENLIB_PARAMTYPE_FLOAT;
-	pi->defaultvalue = self->m_midi_cc_3;
-	pi->defaultref = 0;
-	pi->hasinputminmax = false;
-	pi->inputmin = 0;
-	pi->inputmax = 1;
-	pi->hasminmax = true;
-	pi->outputmin = 0.1;
-	pi->outputmax = 12;
-	pi->exp = 0;
-	pi->units = "";		// no units defined
+	self->__commonstate.params = 0;
+	self->__commonstate.numparams = 0;
 	
 	return self;
 }
@@ -338,10 +268,9 @@ void *create(t_param sr, long vs) {
 
 void destroy(CommonState *cself) {
 	State *self = (State *)cself;
-	genlib_sysmem_freeptr(cself->params);
-		
+	
 	delete self;
 }
 
 
-} // piezo_test::
+} // gen_7e_2ecomb::

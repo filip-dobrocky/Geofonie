@@ -29,4 +29,5 @@ namespace NetworkConfig {
 
     const int osc_from_ctl = 54345;
     const int osc_from_ap = 54350;
+    const int osc_info = 54355;
 }

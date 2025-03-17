@@ -127,7 +127,7 @@
 						}
 ,
 						"classnamespace" : "dsp.gen",
-						"rect" : [ -25566.0, -25566.0, 1323.0, 735.0 ],
+						"rect" : [ 27.0, 27.0, 1323.0, 735.0 ],
 						"bglocked" : 0,
 						"openinpresentation" : 0,
 						"default_fontsize" : 12.0,
@@ -156,18 +156,6 @@
 						"subpatcher_template" : "",
 						"assistshowspatchername" : 0,
 						"boxes" : [ 							{
-								"box" : 								{
-									"id" : "obj-26",
-									"maxclass" : "newobj",
-									"numinlets" : 0,
-									"numoutlets" : 1,
-									"outlettype" : [ "" ],
-									"patching_rect" : [ 151.0, 315.0, 213.0, 22.0 ],
-									"text" : "param midi_cc4 2 @min 0.1 @max 12"
-								}
-
-							}
-, 							{
 								"box" : 								{
 									"id" : "obj-18",
 									"maxclass" : "newobj",
