@@ -3,9 +3,8 @@
     CC2: servo min angle / (sample pos) loop start pos
     CC3: servo max angle / (sample pos) loop end pos
     CC4: rotation speed  / (sample pos) loop speed
-    CC5: misc1
-    CC6: misc2
-    CC7: misc3
+    CC5..10: misc1..6
+
 
 # OSC messages:
     [obj_id]: 0, 1, 2, 3, 4
