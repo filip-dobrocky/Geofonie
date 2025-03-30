@@ -1,3 +1,10 @@
+# Dependencies
+- [ArduinoOSC](https://docs.arduino.cc/libraries/arduinoosc/)
+- [MIDI Library](https://docs.arduino.cc/libraries/midi-library/)
+- [ESP-FlexyStepper](https://docs.arduino.cc/libraries/esp-flexystepper/)
+- [ESP32Servo](https://docs.arduino.cc/libraries/esp32servo/)
+- [Pololu VL53L4CD](https://github.com/pololu/vl53l4cd-arduino)
+
 # Roto MIDI messages:
     CC1: sensor value
     CC2: servo min angle / (sample pos) loop start pos
