@@ -24,12 +24,15 @@
 `/toRoto/servo/center [obj_id] [value]`  
 #### Angle range (0 = no movement):  
 `/toRoto/servo/angle [obj_id] [value]`  
-#### Movement mode (0 / 1 - alternating / linear):  
+#### Movement mode:
+    0 = STATIC
+    1 = ALTERNATING
+    2 = LINEAR
 `/toRoto/servo/mode [obj_id] [value]`  
 #### Movement direction (0 / 1):  
 `/toRoto/servo/direction [obj_id] [value]`  
 #### Servo calibration (0 / 1):
-Stop automatic movement and set angle based on `angle` message  
+Stop automatic movement and set angle based on `center` message  
 `/toRoto/servo/calibrate [obj_id] [value]`  
 
 ### Sensor calibration
@@ -43,20 +46,13 @@ Sent from object to all devices
 `/info/reading [obj_id] [value]`  
 
 ### Misc parameters:
-Sent to Daisy Seed as MIDI CC 5-7 to be used as sound synthesis parameters  
-`/toRoto/misc/1 [obj_id] [value]`  
-`/toRoto/misc/2 [obj_id] [value]`  
-`/toRoto/misc/3 [obj_id] [value]`  
+Sent to Daisy Seed as MIDI CC 5-10 to be used as sound synthesis parameters  
+`/toRoto/misc/[1-6] [obj_id] [value]`   
 
 ## Acid objects
 
 Generic parameters sent to Daisy Seed as MIDI CC 1-6  
-`/toAcid/param1 [obj_id] [value]`  
-`/toAcid/param2 [obj_id] [value]`  
-`/toAcid/param3 [obj_id] [value]`  
-`/toAcid/param4 [obj_id] [value]`  
-`/toAcid/param5 [obj_id] [value]`  
-`/toAcid/param6 [obj_id] [value]`  
+`/toAcid/param[1-6] [obj_id] [value]`  
 
 ## Global
 ### Rotation speed
@@ -74,7 +70,8 @@ Network parameters are defined in `NetworkConfig.h`
 
 SSID: `TrychtyrLOM`  
 Password: `LomLomLom`  
-  
+
+Access point IP: `192.168.0.201`  
 Port for sending OSC messages to AP (objects): `54345`  
 Port for listening to `/info` messages: `54355`  
 Port for sending to individual objects (IPs are defined in the header): `54350`  
