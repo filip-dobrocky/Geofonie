@@ -29,8 +29,8 @@
 
 #define SERVO_PIN D3
 
-#define MAX_ANGLE 0
-#define MIN_ANGLE 180
+#define MIN_ANGLE 0
+#define MAX_ANGLE 180
 
 #define MIN_DISTANCE 100
 #define MAX_DISTANCE 500
