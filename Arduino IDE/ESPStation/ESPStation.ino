@@ -10,7 +10,7 @@
 
 // Constants
 
-#define OBJ_ID 3
+#define OBJ_ID 0
 #define BAD_DRIVER 0
 
 #define MS1_PIN D4
@@ -32,8 +32,8 @@
 #define MIN_ANGLE 0
 #define MAX_ANGLE 180
 
-#define MIN_DISTANCE 100
-#define MAX_DISTANCE 500
+#define MIN_DISTANCE 200
+#define MAX_DISTANCE 325
 
 #define STEPS_PER_ROTATION 13500
 #define DEGREES_PER_ROTATION 10
@@ -77,13 +77,12 @@ float sensor_value_osc;
 
 float min_distance_osc = 0;
 float max_distance_osc = 1;
-float misc_osc[MISC_PARAM_NUM] = {0};
 
 // Speed settings
 const int SPEED_MIN = 2;
-const int SPEED_MAX = 8000; // can be tuned
+const int SPEED_MAX = 12000; // can be tuned
 const int ACCELERATION = 1000;
-const int DECELERATION = 1000;
+const int DECELERATION = 2000;
 
 int stepper_speed = SPEED_MIN;
 
@@ -102,7 +101,7 @@ uint8_t end_pos_midi = 0;
 uint8_t loop_pos = 0;
 uint8_t speed_midi = 0;
 uint8_t sensor_midi = 0;
-uint8_t misc_midi[MISC_PARAM_NUM] = {0};
+uint8_t misc_midi[MISC_PARAM_NUM] = {127};
 
 ESP_FlexyStepper stepper;
 int rotation_direction = 1;
@@ -164,13 +163,8 @@ void stepper_stop() {
 }
 
 void servo_tilt(int angle) {
-  // while (!servo.attached()) {
-  //   servo.attach(SERVO_PIN);
-  // }
 
   servo.write(angle);
-  // delay(5);
-  // servo.detach();
 }
 
 void transport() {
@@ -271,8 +265,8 @@ void misc_osc_callback(const OscMessage& m) {
   int index = adr.substring(adr.lastIndexOf('/') + 1).toInt();
 
   if (index >= 0 && index < MISC_PARAM_NUM) {
-    misc_osc[index] = m.arg<float>(0);
-    misc_midi[index] = FLOAT_TO_MIDI(misc_osc[index]);
+    float val = m.arg<float>(0);
+    misc_midi[index] = FLOAT_TO_MIDI(val);
   }
 }
 
