@@ -356,7 +356,9 @@ void setup() {
     OscWiFi.subscribe(NetworkConfig::osc_from_ap, "/toRoto/misc/*", misc_osc_callback);
 
     OscWiFi.publish("255.255.255.255", NetworkConfig::osc_info, "/info/reading", OBJ_ID, sensor_value_osc)
-        ->setFrameRate(10);
+      ->setFrameRate(10);
+    OscWiFi.publish("255.255.255.255", NetworkConfig::osc_info, "/info/readingRaw", OBJ_ID, sensor_value)
+      ->setFrameRate(10);
   }
 
   // Timers
