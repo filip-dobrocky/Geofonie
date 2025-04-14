@@ -10,7 +10,7 @@
 
 // Constants
 
-#define OBJ_ID 0
+#define OBJ_ID 1
 #define BAD_DRIVER 0
 
 #define MS1_PIN D4
@@ -29,17 +29,16 @@
 
 #define SERVO_PIN D3
 
-#define MIN_ANGLE 0
-#define MAX_ANGLE 180
+#define MIN_ANGLE 40
+#define MAX_ANGLE 99
 
 #define MIN_DISTANCE 200
-#define MAX_DISTANCE 325
+#define MAX_DISTANCE 400
 
 #define STEPS_PER_ROTATION 13500
 #define DEGREES_PER_ROTATION 10
 
 #define MISC_PARAM_NUM 6
-#define MIDI_PERIOD 10 // in ms, increase if Daisy is not responding
 
 // Macros
 
@@ -66,8 +65,6 @@ VL53L4CD sensor;
 
 Smoothing sensor_filter;
 
-hw_timer_t *midi_timer = NULL;
-
 const IPAddress ip(GET_ROTO_IP(OBJ_ID));
 const IPAddress gateway(NetworkConfig::gateway);
 const IPAddress subnet(NetworkConfig::subnet);
@@ -80,7 +77,7 @@ float max_distance_osc = 1;
 
 // Speed settings
 const int SPEED_MIN = 2;
-const int SPEED_MAX = 12000; // can be tuned
+const int SPEED_MAX = 8000; // can be tuned
 const int ACCELERATION = 1000;
 const int DECELERATION = 2000;
 
@@ -161,7 +158,7 @@ void stepper_stop() {
   digitalWrite(EN_PIN, HIGH);
   Serial.println("stop");
 }
-
+ 
 void servo_tilt(int angle) {
 
   servo.write(angle);
@@ -264,28 +261,37 @@ void misc_osc_callback(const OscMessage& m) {
   String adr = m.address();
   int index = adr.substring(adr.lastIndexOf('/') + 1).toInt();
 
-  if (index >= 0 && index < MISC_PARAM_NUM) {
+  if (index >= 1 && index <= MISC_PARAM_NUM) {
     float val = m.arg<float>(0);
-    misc_midi[index] = FLOAT_TO_MIDI(val);
+    misc_midi[index-1] = FLOAT_TO_MIDI(val);
   }
 }
 
 
-void IRAM_ATTR midi_ISR() {
-  // NO CALCULATIONS HERE
+void midi_send() {
+  const uint8_t sensor_period = 10;
+  const uint8_t params_period = 60;
+  static uint16_t sensor_time = 0;
+  static uint16_t params_time = 0;
+
   // CC 1 - sensor value
-  midi1.sendControlChange(1, sensor_midi, 1);
-  // CC 2 - loop start position
-  midi1.sendControlChange(2, start_pos_midi, 1);
-  // CC 3 - loop end position
-  midi1.sendControlChange(3, end_pos_midi, 1);
-  // CC 4 - loop speed
-  midi1.sendControlChange(4, speed_midi, 1);
-  // CC 5... - misc
-  for (int i = 0; i < MISC_PARAM_NUM; i++) {
-    midi1.sendControlChange(5 + i, misc_midi[i], 1);
+  if (millis() - sensor_time >= sensor_period) {
+    midi1.sendControlChange(1, sensor_midi, 1);
+    sensor_time = millis();
   }
 
+  if (millis() - params_time >= params_period) {
+    // CC 2 - loop start position
+    midi1.sendControlChange(2, start_pos_midi, 1);
+    // CC 3 - loop end position
+    midi1.sendControlChange(3, end_pos_midi, 1);
+    // CC 4 - loop speed
+    midi1.sendControlChange(4, speed_midi, 1);
+    // CC 5... - misc
+    for (int i = 0; i < MISC_PARAM_NUM; i++) {
+      midi1.sendControlChange(5 + i, misc_midi[i], 1);
+    }
+  }
 }
 
 
@@ -357,14 +363,9 @@ void setup() {
 
     OscWiFi.publish("255.255.255.255", NetworkConfig::osc_info, "/info/reading", OBJ_ID, sensor_value_osc)
       ->setFrameRate(10);
-    OscWiFi.publish("255.255.255.255", NetworkConfig::osc_info, "/info/readingRaw", OBJ_ID, sensor_value)
+    OscWiFi.publish("255.255.255.255", NetworkConfig::osc_info, "/info/midiSensor", OBJ_ID, sensor_midi)
       ->setFrameRate(10);
   }
-
-  // Timers
-  midi_timer = timerBegin(1000);
-  timerAttachInterrupt(midi_timer, &midi_ISR);
-  timerAlarm(midi_timer, MIDI_PERIOD, true, 0);
 }
 
 void loop() {
@@ -390,4 +391,5 @@ void loop() {
   Serial.println(angle);
   
   transport();
+  midi_send();
 }

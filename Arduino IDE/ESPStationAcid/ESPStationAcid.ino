@@ -5,7 +5,7 @@
 
 // Constants
 
-#define OBJ_ID 4
+#define OBJ_ID 0
 
 #define RX_PIN D7
 #define TX_PIN D8
