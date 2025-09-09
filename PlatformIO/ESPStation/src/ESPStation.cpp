@@ -11,7 +11,7 @@
 
 // Constants
 
-#define OBJ_ID 2
+#define OBJ_ID 1
 #define BAD_DRIVER 0
 
 #define MS1_PIN D4
@@ -30,14 +30,17 @@
 
 #define SERVO_PIN D3
 
-#define MAX_ANGLE 110
-#define MIN_ANGLE 70
 
-#define MIN_DISTANCE 100
-#define MAX_DISTANCE 500
+#define MIN_ANGLE 40
+#define MAX_ANGLE 99
+
+#define MIN_DISTANCE 200
+#define MAX_DISTANCE 400
 
 #define STEPS_PER_ROTATION 13500
 #define DEGREES_PER_ROTATION 10
+
+#define MISC_PARAM_NUM 6
 
 // ---- Macros ----
 
@@ -47,6 +50,7 @@
 // ---- Enums ----
 
 enum TransportMode {
+  STATIC,
   LINEAR,
   ALTERNATING
 };
@@ -72,10 +76,16 @@ const IPAddress subnet(NetworkConfig::subnet);
 int sensor_value = 0;
 float sensor_value_osc;
 
+
 float min_distance_osc = 0;
 float max_distance_osc = 1;
-float misc1_osc = 0;
-float misc2_osc = 0;
+
+uint8_t start_pos_midi = 0;
+uint8_t end_pos_midi = 0;
+uint8_t loop_pos = 0;
+uint8_t speed_midi = 0;
+uint8_t sensor_midi = 0;
+uint8_t misc_midi[MISC_PARAM_NUM] = {127};
 
 // ---- Speed settings ----
 
@@ -92,7 +102,7 @@ int angle_dif = ((MAX_ANGLE - MIN_ANGLE) / 2);
 int center_angle = MIN_ANGLE + angle_dif;
 int angle = center_angle;
 int servo_direction = 1;
-enum TransportMode transport_mode = LINEAR;
+enum TransportMode transport_mode = STATIC;
 float loop_length = 0.1;
 bool calibration = false;
 
@@ -185,17 +195,13 @@ void setup() {
     OscWiFi.subscribe(NetworkConfig::osc_from_ap, "/toRoto/rotation/*", rotation_osc);
     OscWiFi.subscribe(NetworkConfig::osc_from_ap, "/toRoto/calibration/minDist", min_distance_osc);
     OscWiFi.subscribe(NetworkConfig::osc_from_ap, "/toRoto/calibration/maxDist", max_distance_osc);
-    // OscWiFi.subscribe(NetworkConfig::osc_from_ap, "/toRoto/misc/1", misc1_osc);
-    // OscWiFi.subscribe(NetworkConfig::osc_from_ap, "/toRoto/misc/2", misc2_osc);
+    OscWiFi.subscribe(NetworkConfig::osc_from_ap, "/toRoto/misc/*", misc_osc_callback);
 
     OscWiFi.publish("255.255.255.255", NetworkConfig::osc_info, "/info/reading", OBJ_ID, sensor_value_osc)
-        ->setFrameRate(10);
+      ->setFrameRate(10);
+    OscWiFi.publish("255.255.255.255", NetworkConfig::osc_info, "/info/midiSensor", OBJ_ID, sensor_midi)
+      ->setFrameRate(10);
   }
-
-  // Timers
-  midi_timer = timerBegin(1000);
-  timerAttachInterrupt(midi_timer, &midi_ISR);
-  timerAlarm(midi_timer, 10, true, 0);
 }
 
 void loop() {
@@ -220,6 +226,7 @@ void loop() {
   Serial.println(angle);
   
   transport();
+  midi_send();
 }
 
 // ---- Function definitions ----
@@ -336,7 +343,17 @@ void servo_osc(const OscMessage& m) {
     angle_dif = a;
   } 
   else if (adr.endsWith("/mode")) {
-    transport_mode = m.arg<float>(0) > 0 ? ALTERNATING : LINEAR;
+    switch ((int)m.arg<float>(0)) {
+      case 0:
+        transport_mode = STATIC;
+        break;
+      case 1:
+        transport_mode = LINEAR;
+        break;
+      case 2:
+        transport_mode = ALTERNATING;
+        break;
+    }
   } 
   else if (adr.endsWith("/direction")) {
     servo_direction = m.arg<float>(0) > 0 ? -1 : 1;
@@ -372,18 +389,39 @@ void rotation_osc(const OscMessage& m) {
 }
 
 
-void IRAM_ATTR midi_ISR() {
-  // NO CALCULATIONS HERE
+void misc_osc_callback(const OscMessage& m) {
+  String adr = m.address();
+  int index = adr.substring(adr.lastIndexOf('/') + 1).toInt();
+
+  if (index >= 1 && index <= MISC_PARAM_NUM) {
+    float val = m.arg<float>(0);
+    misc_midi[index-1] = FLOAT_TO_MIDI(val);
+  }
+}
+
+void midi_send() {
+  const uint8_t sensor_period = 10;
+  const uint8_t params_period = 60;
+  static uint16_t sensor_time = 0;
+  static uint16_t params_time = 0;
+
   // CC 1 - sensor value
-  midi1.sendControlChange(1, sensor_midi, 1);
-  // CC 2 - loop start position
-  midi1.sendControlChange(2, start_pos_midi, 1);
-  // CC 3 - loop end position
-  midi1.sendControlChange(3, end_pos_midi, 1);
-  // CC 4 - loop speed
-  midi1.sendControlChange(4, speed_midi, 1);
-  // CC 5 - misc 1
-  midi1.sendControlChange(5, FLOAT_TO_MIDI(misc1_osc), 1);
-  // CC 6 - misc 2
-  midi1.sendControlChange(6, FLOAT_TO_MIDI(misc2_osc), 1);
+  if (millis() - sensor_time >= sensor_period) {
+    midi1.sendControlChange(1, sensor_midi, 1);
+    sensor_time = millis();
+  }
+
+  if (millis() - params_time >= params_period) {
+    // CC 2 - loop start position
+    midi1.sendControlChange(2, start_pos_midi, 1);
+    // CC 3 - loop end position
+    midi1.sendControlChange(3, end_pos_midi, 1);
+    // CC 4 - loop speed
+    midi1.sendControlChange(4, speed_midi, 1);
+    // CC 5... - misc
+    for (int i = 0; i < MISC_PARAM_NUM; i++) {
+      midi1.sendControlChange(5 + i, misc_midi[i], 1);
+    }
+    params_time = millis();
+  }
 }
