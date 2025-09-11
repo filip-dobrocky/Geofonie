@@ -14,10 +14,17 @@
 #include "Smoothing.h"
 
 // Constants
+const char* TAG = "geo_roto";
 
-#define OBJ_ID 1
+#ifndef OBJ_ID
+#define OBJ_ID 0
+#endif
+
+#ifndef BAD_DRIVER
 #define BAD_DRIVER 0
+#endif
 
+#ifdef BOARD_XIAO
 #define MS1_PIN D4
 #define MS2_PIN D5
 #define MS3_PIN D6
@@ -33,6 +40,7 @@
 #define EN_PIN D2
 
 #define SERVO_PIN D3
+#endif
 
 #define MIN_ANGLE 40
 #define MAX_ANGLE 99
@@ -44,6 +52,10 @@
 #define DEGREES_PER_ROTATION 10
 
 #define MISC_PARAM_NUM 6
+
+#ifndef NO_SENSOR
+#define NO_SENSOR 0
+#endif
 
 
 // ---- Enums ----
@@ -57,7 +69,7 @@ enum TransportMode {
 painlessMesh mesh;
 WiFiUDP udp;
 const char *base_address = "/toRoto";
-const char *broadcast_address = nullptr;
+const char *broadcast_address = "/fromRoto";
 
 // ---- Misc OSC params  ----
 constexpr int NUM_MISC = MISC_PARAM_NUM;
@@ -78,6 +90,8 @@ float misc_osc[NUM_MISC] = {1.0f};
 // ---- Named OSC params ----
 OSC_receive_msg rcv_rotation_speed("/rotation/speed");
 OSC_receive_msg rcv_rotation_direction("/rotation/direction");
+OSC_receive_msg rcv_global_rotation_speed("/global/rotation/speed");
+OSC_receive_msg rcv_global_rotation_direction("/global/rotation/direction");
 
 OSC_receive_msg rcv_servo_center("/servo/center");
 OSC_receive_msg rcv_servo_tilt("/servo/tilt");
@@ -89,6 +103,9 @@ OSC_receive_msg rcv_servo_calibrate("/servo/calibrate");
 OSC_receive_msg rcv_min_distance("/calibration/min_distance");
 OSC_receive_msg rcv_max_distance("/calibration/max_distance");
 
+OSC_send_msg snd_ping("/ping");
+OSC_send_msg snd_reading("/reading");
+
 // ---- MIDI ----
 HardwareSerial MidiSerial(1);
 
@@ -96,7 +113,6 @@ MIDI_CREATE_INSTANCE(HardwareSerial, MidiSerial, midi1);
 
 // ---- Sensor ----
 VL53L4CD sensor;
-
 Smoothing sensor_filter;
 
 // --- Network ---
@@ -126,7 +142,7 @@ int angle = center_angle;
 int servo_direction = 1;
 enum TransportMode transport_mode = STATIC;
 float loop_length = 0.1;
-bool calibration = false;
+bool calibrating = false;
 
 // ---- Midi controls ----
 uint8_t start_pos_midi = 0;
@@ -150,11 +166,13 @@ void stepper_stop();
 void servo_tilt(int angle);
 void transport();
 void midi_send();
+void ping();
+void send_info();
 
 void servo_osc_callback(OSCMessage& m);
 void rotation_osc_callback(OSCMessage& m);
 void misc_osc_callback(OSCMessage& m);
-
+void calibration_osc_callback(OSCMessage& m);
 
 
 // ---- Function definitions ----
@@ -179,13 +197,15 @@ void setup() {
   sensor.setTimeout(500);
   if (!sensor.init())
   {
-    Serial.println("Failed to detect and initialize sensor!");
+    ESP_LOGE(TAG, "Failed to detect and initialize sensor!");
+  #if NO_SENSOR == 0
     while (1) {
       digitalWrite(LED_BUILTIN, HIGH);
       delay(250);
       digitalWrite(LED_BUILTIN, LOW);
       delay(250);
     }
+  #endif
   }
 
   sensor.setRangeTiming(10, 0);
@@ -211,8 +231,6 @@ void setup() {
   stepper.startAsService(1);
   stepper_start(rotation_direction);
 
-  Serial.println("Motors initialized");
-
   // Mesh network init
   mesh.init(
     NetworkConfig::ssid, NetworkConfig::password,
@@ -225,23 +243,32 @@ void setup() {
     rcv_misc[i].init(misc_osc_callback);
   }
 
-  // Setup OSC receive handlers for named messages
-  // These remain as your original callbacks:
-  //   servo_osc, rotation_osc, min_distance_osc, max_distance_osc, misc_osc_callback
-  // Example using osc_control API:
-  //   OSC_receive_msg rcv_servo("/servo/*");
-  //   rcv_servo.init(servo_osc);
-  //   ...
-  //   (repeat for other named messages and callbacks)
-  //   (You may need to adapt the callback signatures if needed)
+  rcv_rotation_speed.init(rotation_osc_callback);
+  rcv_rotation_direction.init(rotation_osc_callback);
+  rcv_global_rotation_speed.init(rotation_osc_callback);
+  rcv_global_rotation_direction.init(rotation_osc_callback);
+  rcv_servo_center.init(servo_osc_callback);
+  rcv_servo_angle.init(servo_osc_callback);
+  rcv_servo_mode.init(servo_osc_callback);
+  rcv_servo_direction.init(servo_osc_callback);
+  rcv_servo_calibrate.init(servo_osc_callback);
+  rcv_min_distance.init(calibration_osc_callback);
+  rcv_max_distance.init(calibration_osc_callback);
+
+  snd_ping.init(broadcast_address);
+  snd_reading.init(broadcast_address);
 }
 
 void loop() {
   mesh.update();
   osc_control_loop(udp, base_address, broadcast_address);
 
+#if NO_SENSOR == 0
   sensor.read();
   sensor_value = sensor_filter.filter(sensor.ranging_data.range_mm);
+#else
+  sensor_value = (MIN_DISTANCE + MAX_DISTANCE) / 2;
+#endif
   sensor_value_osc = constrain((float)(sensor_value - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE), 0.0f, 1.0f);
   int min_d = (int)floor(MIN_DISTANCE + min_distance_osc * (MAX_DISTANCE - MIN_DISTANCE));
   int max_d = (int)floor(MIN_DISTANCE + max_distance_osc * (MAX_DISTANCE - MIN_DISTANCE));
@@ -254,34 +281,33 @@ void loop() {
     misc_midi[i] = FLOAT_TO_MIDI(misc_osc[i]);
   }
 
-  Serial.print("Sensor distance: ");
-  Serial.print(sensor_value);
-  Serial.print(" Stepper speed ");
-  Serial.print(stepper_speed);
-  Serial.print(" Servo angle ");
-  Serial.println(angle);
-
   transport();
   midi_send();
+  ping();
+  send_info();
+
+#if CORE_DEBUG_LEVEL > 0
+  static uint32_t print_elapsed = millis();
+  if (millis() - print_elapsed >= 1000) {
+    Serial.printf("Sensor: %d, Servo angle: %d, Stepper speed: %d\n", sensor_value, angle, stepper_speed);
+    print_elapsed = millis();
+  }
+#endif
 }
 
 // ---- Function definitions ----
 
-int normalize_distance(int distance, int radius, int angle) {
-  int difference = radius - radius / cos(DEG_TO_RAD * angle);
-  return distance - difference;
-}
-
 void stepper_start(int dir) {
   digitalWrite(EN_PIN, LOW);
   stepper.startJogging(dir);
+  ESP_LOGI(TAG, "Stepper started with speed %d", stepper_speed);
 }
 
 void stepper_stop() {
   stepper.stopJogging();
   delay(1000);
   digitalWrite(EN_PIN, HIGH);
-  Serial.println("stop");
+  ESP_LOGI(TAG, "Stepper stopped");
 }
 
 void transport() {
@@ -290,13 +316,9 @@ void transport() {
   const uint16_t min_angle = center_angle - angle_dif;
   const uint16_t max_angle = center_angle + angle_dif;
 
-  // Serial.print("Servo period: ");
-  // Serial.println(servo_period);
-
   // servo control
   static uint32_t servo_elapsed = millis();
-  if (millis() - servo_elapsed >= servo_period && !calibration) {
-    Serial.println("Servo period");
+  if (millis() - servo_elapsed >= servo_period && !calibrating) {
     servo.write(angle);
     angle += servo_direction;
 
@@ -319,47 +341,79 @@ void transport() {
   end_pos_midi = (start_pos_midi + FLOAT_TO_MIDI(loop_length)) % 128;
 }
 
-void servo_osc(const OSCMessage& m) {
-  String adr = m.address();
+// === OSC Callbacks ===
+
+void servo_osc_callback(OSCMessage& m) {
+  if (m.size() < 2) {
+    ESP_LOGW(TAG, "Servo message with insufficient args");
+    return;
+  }
+  if (m.getFloat(0) != (float)OBJ_ID) {
+    return;
+  }
+
+  String adr = m.getAddress();
 
   if (adr.endsWith("/center")) {
-    center_angle = MIN_ANGLE + int(floor(m.arg<float>(0) * (MAX_ANGLE - MIN_ANGLE)));
+    center_angle = MIN_ANGLE + int(floor(m.getFloat(1) * (MAX_ANGLE - MIN_ANGLE)));
     servo.write(center_angle);
+    ESP_LOGI(TAG, "Center angle: %d", center_angle);
   } 
   else if (adr.endsWith("/angle")) {
-    int a = int(m.arg<float>(0) * ((MAX_ANGLE - MIN_ANGLE) / 2));
-    
+    int a = int(m.getFloat(1) * ((MAX_ANGLE - MIN_ANGLE) / 2));
+
     if (center_angle + a > MAX_ANGLE) a = MAX_ANGLE - center_angle;
     else if (center_angle - a < 0)    a = center_angle - MIN_ANGLE;
     angle_dif = a;
+    ESP_LOGI(TAG, "Angle dif: %d", angle_dif);
   } 
   else if (adr.endsWith("/mode")) {
-    switch ((int)m.arg<float>(0)) {
+    switch ((int)m.getFloat(1)) {
       case 0:
         transport_mode = STATIC;
+        ESP_LOGI(TAG, "Transport mode: STATIC");
         break;
       case 1:
         transport_mode = LINEAR;
+        ESP_LOGI(TAG, "Transport mode: LINEAR");
         break;
       case 2:
         transport_mode = ALTERNATING;
+        ESP_LOGI(TAG, "Transport mode: ALTERNATING");
         break;
     }
   } 
   else if (adr.endsWith("/direction")) {
-    servo_direction = m.arg<float>(0) > 0 ? -1 : 1;
+    servo_direction = m.getFloat(1) > 0 ? -1 : 1;
+    ESP_LOGI(TAG, "Direction: %d", servo_direction);
   } 
   else if (adr.endsWith("/calibrate")) {
-    calibration = m.arg<float>(0) > 0;
+    calibrating = m.getFloat(1) > 0;
+    ESP_LOGI(TAG, "Calibrating: %d", calibrating ? 1 : 0);
   }
 }
 
-void rotation_osc(const OSCMessage& m) {
-  String adr = m.address();
+void rotation_osc_callback(OSCMessage& m) {
+  String adr = m.getAddress();
+  bool global = adr.startsWith("/toRoto/global/");
+  int val_idx = global ? 0 : 1;
+
+  if (!global) {
+    if (m.size() < 2) {
+        ESP_LOGW(TAG, "Param message with insufficient args");
+        return;
+    }
+    if (m.getFloat(0) != (float)OBJ_ID) {
+        // not global and not for this object
+        return;
+    }
+  }
+
   static int last_speed = 1;
 
   if (adr.endsWith("/speed")) {
-    stepper_speed = (int)(floor(m.arg<float>(0) * SPEED_MAX));
+    stepper_speed = (int)(floor(m.getFloat(val_idx) * SPEED_MAX));
+    ESP_LOGI(TAG, "Speed: %d", stepper_speed);
     stepper.setSpeedInStepsPerSecond(stepper_speed);
     
     if (stepper_speed == 0 && last_speed > 0) {
@@ -372,7 +426,9 @@ void rotation_osc(const OSCMessage& m) {
     speed_midi = FLOAT_TO_MIDI((float)(stepper_speed) / (SPEED_MAX));
   }
   else if (adr.endsWith("/direction")) {
-    rotation_direction = m.arg<float>(0) > 0 ? -1 : 1;
+    rotation_direction = m.getFloat(val_idx) > 0 ? -1 : 1;
+    ESP_LOGI(TAG, "Rotation direction: %d", rotation_direction);
+
     stepper_stop();
     delay(1000);
     stepper_start(rotation_direction);
@@ -380,19 +436,74 @@ void rotation_osc(const OSCMessage& m) {
 }
 
 
-void misc_osc_callback(const OSCMessage& msg) {
-  if (msg.size() < 2) return;
-  const char* addr = msg.getAddress();
+void calibration_osc_callback(OSCMessage& m) {
+  if (m.size() < 2) {
+    ESP_LOGW(TAG, "Invalid calibration message");
+    return;
+  }
+
+  if (m.getFloat(0) != (float)OBJ_ID) {
+    return;
+  }
+
+  String adr = m.getAddress();
+
+  if (adr.endsWith("/minDist")) {
+    min_distance_osc = constrain(m.getFloat(1), 0.0f, 1.0f);
+    ESP_LOGI(TAG, "Min distance: %d", (int)floor(MIN_DISTANCE + min_distance_osc * (MAX_DISTANCE - MIN_DISTANCE)));
+  } 
+  else if (adr.endsWith("/maxDist")) {
+    max_distance_osc = constrain(m.getFloat(1), 0.0f, 1.0f);
+    ESP_LOGI(TAG, "Max distance: %d", (int)floor(MIN_DISTANCE + max_distance_osc * (MAX_DISTANCE - MIN_DISTANCE)));
+  }
+}
+
+
+void misc_osc_callback(OSCMessage& msg) {
+  if (msg.size() < 2) {
+    ESP_LOGW(TAG, "Invalid misc message");
+    return;
+  }
+
+  if (msg.getFloat(0) != (float)OBJ_ID) {
+    return;
+  }
+
+  String addr = msg.getAddress();
 
   for (int i = 0; i < NUM_MISC; ++i) {
-    if (strcmp(addr, misc_param_names[i]) == 0) {
-      if (msg.getFloat(0) == (float)OBJ_ID) {
-        misc_osc[i] = msg.getFloat(1);
-      }
+    if (addr.endsWith(misc_param_names[i])) {
+      misc_osc[i] = msg.getFloat(1);
+      ESP_LOGI(TAG, "Misc param %s: %f", misc_param_names[i], misc_osc[i]);
       break;
     }
   } 
 }
+
+
+void ping() {
+  static uint32_t last_time = 0;
+  if (millis() - last_time < 5000) return;
+  last_time = millis();
+  ESP_LOGD(TAG, "Ping broadcast");
+
+  snd_ping.m.add((float)OBJ_ID);
+  snd_ping.send(udp, IPAddress(255, 255, 255, 255), NetworkConfig::osc_info);
+}
+
+void send_info() {
+  static uint32_t last_time = 0;
+  if (millis() - last_time < 100) return;
+  last_time = millis();
+
+  snd_reading.m.add((float)OBJ_ID);
+  snd_reading.m.add((float)sensor_value_osc);
+
+  snd_reading.send(udp, IPAddress(255, 255, 255, 255), NetworkConfig::osc_info);
+}
+
+
+// === MIDI sending ===
 
 void midi_send() {
   const uint8_t sensor_period = 10;

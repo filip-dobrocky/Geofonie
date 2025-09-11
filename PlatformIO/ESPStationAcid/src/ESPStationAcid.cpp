@@ -11,7 +11,9 @@
 
 static const char *TAG = "geo_acid";
 
+#ifndef OBJ_ID
 #define OBJ_ID 0
+#endif
 
 #ifdef BOARD_OLIMEX
   #define RX_PIN 7

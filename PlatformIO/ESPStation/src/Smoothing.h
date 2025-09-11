@@ -1,8 +1,6 @@
 #ifndef Smoothing_h
 #define Smoothing_h
 
-#include <Arduino.h>
-
 #define NUM_READINGS 10
 
 class Smoothing {
@@ -17,8 +15,6 @@ class Smoothing {
   private:
     long total;
     int readIndex;
-
-
 };
 
 #endif
