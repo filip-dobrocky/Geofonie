@@ -49,7 +49,7 @@ Stop automatic movement and set angle based on `center` message
 
 #### Value read from sensor (0..1):
 Sent from object to all devices  
-`/info/reading [obj_id] [value]`  
+`/fromRoto/reading [obj_id] [value]`  
 
 ### Misc parameters:
 Sent to Daisy Seed as MIDI CC 5-10 to be used as sound synthesis parameters  
@@ -62,10 +62,13 @@ Generic parameters sent to Daisy Seed as MIDI CC 1-6
 
 ## Global
 ### Rotation speed
-`/global/rotSpeed [value]`
+`/toRoto/global/rotation/speed [value]`
+### Rotation direction
+`/toRoto/global/rotation/direction [value]`
 ### Autonomous mode
 Automatic randomization of `/toAcid` parameters
 #### Auto mode on/off
+# TODO: auto messages new version
 `/global/auto [value]`
 #### Auto mode density
 `/global/autoDensity [value]`
@@ -77,7 +80,9 @@ Network parameters are defined in `NetworkConfig.h`
 SSID: `TrychtyrLOM`  
 Password: `LomLomLom`  
 
+Port for sending to mesh objects: `54350`  
+Port for listening to messages from mesh: `54355`  
+
+#### (Deprecated)
 Access point IP: `192.168.0.201`  
 Port for sending OSC messages to AP (objects): `54345`  
-Port for listening to `/info` messages: `54355`  
-Port for sending to individual objects (IPs are defined in the header): `54350`  
