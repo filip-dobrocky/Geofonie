@@ -1,3 +1,21 @@
+/*
+ * ESPStation.cpp
+ * Copyright (C) 2024 Filip Dobrocky, Trychtyr collective
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
 #include <Arduino.h>
 #include <painlessMesh.h>
 #include <WiFi.h>
@@ -8,6 +26,7 @@
 #include <ESP_FlexyStepper.h>
 #include <ESP32Servo.h>
 #include "osc_control.h"
+#include <TaskScheduler.h>
 
 #include "NetworkConfig.h"
 #include "GEOUtils.h"
@@ -158,6 +177,20 @@ int rotation_direction = 1;
 
 Servo servo;
 
+// ---- TaskScheduler ----
+Scheduler runner;
+
+// Forward declaration for the stepper disable task callback
+void disable_stepper_driver();
+
+Task t_disable_stepper(1000UL, TASK_ONCE, &disable_stepper_driver, &runner, false);
+
+// For direction change: schedule stepper_start after 2s instead of blocking delay
+void start_stepper_after_direction_change();
+Task t_start_stepper_dir(2000UL, TASK_ONCE, &start_stepper_after_direction_change, &runner, false);
+int pending_rotation_direction = 1;
+
+
 // ---- Function declarations ----
 
 int normalize_distance(int distance, int radius, int angle);
@@ -168,6 +201,7 @@ void transport();
 void midi_send();
 void ping();
 void send_info();
+void sense();
 
 void servo_osc_callback(OSCMessage& m);
 void rotation_osc_callback(OSCMessage& m);
@@ -224,6 +258,8 @@ void setup() {
   digitalWrite(MS3_PIN, HIGH);
 #endif
 
+  runner.startNow();
+
   stepper.connectToPins(STEP_PIN, DIR_PIN);
   stepper.setSpeedInStepsPerSecond(SPEED_MIN);
   stepper.setAccelerationInStepsPerSecondPerSecond(ACCELERATION);
@@ -234,7 +270,8 @@ void setup() {
   // Mesh network init
   mesh.init(
     NetworkConfig::ssid, NetworkConfig::password,
-    NetworkConfig::mesh_port, WIFI_AP_STA, 1, 0, NetworkConfig::max_conn
+    NetworkConfig::mesh_port, WIFI_AP_STA, NetworkConfig::mesh_channel,
+    0, NetworkConfig::max_conn
   );
   udp.begin(NetworkConfig::osc_from_ap);
 
@@ -260,10 +297,34 @@ void setup() {
 }
 
 void loop() {
+  runner.execute();
   mesh.update();
   osc_control_loop(udp, base_address, broadcast_address);
 
-#if NO_SENSOR == 0
+  sense();
+  transport();
+  midi_send();
+  ping();
+  send_info();
+
+#if CORE_DEBUG_LEVEL > 0
+  static uint32_t print_elapsed = millis();
+  if (millis() - print_elapsed >= 1000) {
+    Serial.printf("Sensor: %d, Servo angle: %d, Stepper speed: %d\n", sensor_value, angle, stepper_speed);
+    // ESP_LOGD(TAG, "Free Heap: %d, Stack: %d", ESP.getFreeHeap(), uxTaskGetStackHighWaterMark(NULL));
+    print_elapsed = millis();
+  }
+#endif
+}
+
+// ---- Function definitions ----
+
+void sense() {
+  static uint32_t last_time = 0;
+  if (millis() - last_time < 40) return;
+  last_time = millis();
+
+  #if NO_SENSOR == 0
   sensor.read();
   sensor_value = sensor_filter.filter(sensor.ranging_data.range_mm);
 #else
@@ -280,34 +341,29 @@ void loop() {
   for (int i = 0; i < NUM_MISC; ++i) {
     misc_midi[i] = FLOAT_TO_MIDI(misc_osc[i]);
   }
-
-  transport();
-  midi_send();
-  ping();
-  send_info();
-
-#if CORE_DEBUG_LEVEL > 0
-  static uint32_t print_elapsed = millis();
-  if (millis() - print_elapsed >= 1000) {
-    Serial.printf("Sensor: %d, Servo angle: %d, Stepper speed: %d\n", sensor_value, angle, stepper_speed);
-    print_elapsed = millis();
-  }
-#endif
 }
-
-// ---- Function definitions ----
 
 void stepper_start(int dir) {
   digitalWrite(EN_PIN, LOW);
   stepper.startJogging(dir);
-  ESP_LOGI(TAG, "Stepper started with speed %d", stepper_speed);
+  ESP_LOGD(TAG, "Stepper started with speed %d", stepper_speed);
+}
+
+void disable_stepper_driver() {
+    digitalWrite(EN_PIN, HIGH);
+    ESP_LOGD(TAG, "Stepper disabled (TaskScheduler)");
 }
 
 void stepper_stop() {
-  stepper.stopJogging();
-  delay(1000);
-  digitalWrite(EN_PIN, HIGH);
-  ESP_LOGI(TAG, "Stepper stopped");
+    stepper.stopJogging();
+    t_disable_stepper.restartDelayed(1000UL);
+    ESP_LOGD(TAG, "Stepper stop requested (non-blocking)");
+}
+
+
+void start_stepper_after_direction_change() {
+    stepper_start(pending_rotation_direction);
+    ESP_LOGD(TAG, "Stepper started after direction change (TaskScheduler)");
 }
 
 void transport() {
@@ -318,7 +374,8 @@ void transport() {
 
   // servo control
   static uint32_t servo_elapsed = millis();
-  if (millis() - servo_elapsed >= servo_period && !calibrating) {
+  if (millis() - servo_elapsed >= servo_period && transport_mode != STATIC && !calibrating) {
+
     servo.write(angle);
     angle += servo_direction;
 
@@ -357,7 +414,7 @@ void servo_osc_callback(OSCMessage& m) {
   if (adr.endsWith("/center")) {
     center_angle = MIN_ANGLE + int(floor(m.getFloat(1) * (MAX_ANGLE - MIN_ANGLE)));
     servo.write(center_angle);
-    ESP_LOGI(TAG, "Center angle: %d", center_angle);
+    ESP_LOGD(TAG, "Center angle: %d", center_angle);
   } 
   else if (adr.endsWith("/angle")) {
     int a = int(m.getFloat(1) * ((MAX_ANGLE - MIN_ANGLE) / 2));
@@ -365,31 +422,31 @@ void servo_osc_callback(OSCMessage& m) {
     if (center_angle + a > MAX_ANGLE) a = MAX_ANGLE - center_angle;
     else if (center_angle - a < 0)    a = center_angle - MIN_ANGLE;
     angle_dif = a;
-    ESP_LOGI(TAG, "Angle dif: %d", angle_dif);
+    ESP_LOGD(TAG, "Angle dif: %d", angle_dif);
   } 
   else if (adr.endsWith("/mode")) {
     switch ((int)m.getFloat(1)) {
       case 0:
         transport_mode = STATIC;
-        ESP_LOGI(TAG, "Transport mode: STATIC");
+        ESP_LOGD(TAG, "Transport mode: STATIC");
         break;
       case 1:
         transport_mode = LINEAR;
-        ESP_LOGI(TAG, "Transport mode: LINEAR");
+        ESP_LOGD(TAG, "Transport mode: LINEAR");
         break;
       case 2:
         transport_mode = ALTERNATING;
-        ESP_LOGI(TAG, "Transport mode: ALTERNATING");
+        ESP_LOGD(TAG, "Transport mode: ALTERNATING");
         break;
     }
   } 
   else if (adr.endsWith("/direction")) {
     servo_direction = m.getFloat(1) > 0 ? -1 : 1;
-    ESP_LOGI(TAG, "Direction: %d", servo_direction);
+    ESP_LOGD(TAG, "Direction: %d", servo_direction);
   } 
   else if (adr.endsWith("/calibrate")) {
     calibrating = m.getFloat(1) > 0;
-    ESP_LOGI(TAG, "Calibrating: %d", calibrating ? 1 : 0);
+    ESP_LOGD(TAG, "Calibrating: %d", calibrating ? 1 : 0);
   }
 }
 
@@ -413,7 +470,7 @@ void rotation_osc_callback(OSCMessage& m) {
 
   if (adr.endsWith("/speed")) {
     stepper_speed = (int)(floor(m.getFloat(val_idx) * SPEED_MAX));
-    ESP_LOGI(TAG, "Speed: %d", stepper_speed);
+    ESP_LOGD(TAG, "Speed: %d", stepper_speed);
     stepper.setSpeedInStepsPerSecond(stepper_speed);
     
     if (stepper_speed == 0 && last_speed > 0) {
@@ -427,11 +484,11 @@ void rotation_osc_callback(OSCMessage& m) {
   }
   else if (adr.endsWith("/direction")) {
     rotation_direction = m.getFloat(val_idx) > 0 ? -1 : 1;
-    ESP_LOGI(TAG, "Rotation direction: %d", rotation_direction);
+    ESP_LOGD(TAG, "Rotation direction: %d", rotation_direction);
 
     stepper_stop();
-    delay(1000);
-    stepper_start(rotation_direction);
+    pending_rotation_direction = rotation_direction;
+    t_start_stepper_dir.restartDelayed(2000UL);
   }
 }
 
@@ -450,11 +507,11 @@ void calibration_osc_callback(OSCMessage& m) {
 
   if (adr.endsWith("/minDist")) {
     min_distance_osc = constrain(m.getFloat(1), 0.0f, 1.0f);
-    ESP_LOGI(TAG, "Min distance: %d", (int)floor(MIN_DISTANCE + min_distance_osc * (MAX_DISTANCE - MIN_DISTANCE)));
+    ESP_LOGD(TAG, "Min distance: %d", (int)floor(MIN_DISTANCE + min_distance_osc * (MAX_DISTANCE - MIN_DISTANCE)));
   } 
   else if (adr.endsWith("/maxDist")) {
     max_distance_osc = constrain(m.getFloat(1), 0.0f, 1.0f);
-    ESP_LOGI(TAG, "Max distance: %d", (int)floor(MIN_DISTANCE + max_distance_osc * (MAX_DISTANCE - MIN_DISTANCE)));
+    ESP_LOGD(TAG, "Max distance: %d", (int)floor(MIN_DISTANCE + max_distance_osc * (MAX_DISTANCE - MIN_DISTANCE)));
   }
 }
 
@@ -474,7 +531,7 @@ void misc_osc_callback(OSCMessage& msg) {
   for (int i = 0; i < NUM_MISC; ++i) {
     if (addr.endsWith(misc_param_names[i])) {
       misc_osc[i] = msg.getFloat(1);
-      ESP_LOGI(TAG, "Misc param %s: %f", misc_param_names[i], misc_osc[i]);
+      ESP_LOGD(TAG, "Misc param %s: %f", misc_param_names[i], misc_osc[i]);
       break;
     }
   } 
@@ -493,7 +550,7 @@ void ping() {
 
 void send_info() {
   static uint32_t last_time = 0;
-  if (millis() - last_time < 100) return;
+  if (millis() - last_time < 400) return;
   last_time = millis();
 
   snd_reading.m.add((float)OBJ_ID);

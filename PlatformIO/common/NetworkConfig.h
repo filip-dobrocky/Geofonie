@@ -31,6 +31,7 @@ namespace NetworkConfig {
 
     const int mesh_port = 5555;
     const int max_conn = 10;
+    const int mesh_channel = 1;
 
     const int osc_from_ctl = 54345;
     const int osc_from_ap = 54350;
