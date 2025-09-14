@@ -1,5 +1,12 @@
+# Geofonie
+A networked sound art installation born out of [Trychtyr](https://svitava.org/project/trychtyr/) project of [SVITAVA transmedia art lab](https://svitava.org/).
+
+This repository contains all of the software and also the hardware documentation.
+
+The ESP32 firmware is in the `PlatformIO` directory, the `Daisy` directory contains Gen patches for [Oopsy](github.com/electro-smith/oopsy/), current: `Granular/geofonie_gen_simpler2.maxpat`.
+
 # Dependencies
-- [ArduinoOSC](https://docs.arduino.cc/libraries/arduinoosc/)
+- [OSC Control](https://git.iem.at/uC/OSC_control)
 - [MIDI Library](https://docs.arduino.cc/libraries/midi-library/)
 - [ESP-FlexyStepper](https://docs.arduino.cc/libraries/esp-flexystepper/)
 - [ESP32Servo](https://docs.arduino.cc/libraries/esp32servo/)
@@ -57,8 +64,8 @@ Sent to Daisy Seed as MIDI CC 5-10 to be used as sound synthesis parameters
 
 ## Acid objects
 
-Generic parameters sent to Daisy Seed as MIDI CC 1-6  
-`/toAcid/param[1-6] [obj_id] [value]`  
+Generic parameters sent to Daisy Seed as MIDI CC 1-10  
+`/toAcid/param[1-10] [obj_id] [value]`  
 
 ## Global
 ### Rotation speed
