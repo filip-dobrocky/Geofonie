@@ -1,3 +1,5 @@
+#pragma once
+
 #define GET_ROTO_IP(id) NetworkConfig::roto_object_ips[id]
 #define GET_ACID_IP(id) NetworkConfig::acid_object_ips[id]
 
@@ -26,6 +28,10 @@ namespace NetworkConfig {
         "192.168.0.218",
         "192.168.0.219"
     };
+
+    const int mesh_port = 5555;
+    const int max_conn = 10;
+    const int mesh_channel = 1;
 
     const int osc_from_ctl = 54345;
     const int osc_from_ap = 54350;
