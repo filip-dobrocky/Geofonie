@@ -39,6 +39,10 @@ const char* TAG = "geo_roto";
 #define OBJ_ID 0
 #endif
 
+#ifndef STATION_ONLY
+#define STATION_ONLY OBJ_ID!=0
+#endif
+
 #ifndef BAD_DRIVER
 #define BAD_DRIVER 0
 #endif
@@ -270,7 +274,13 @@ void setup() {
   // Mesh network init
   mesh.init(
     NetworkConfig::ssid, NetworkConfig::password,
-    NetworkConfig::mesh_port, WIFI_AP_STA, NetworkConfig::mesh_channel,
+    NetworkConfig::mesh_port,
+#if STATION_ONLY 
+    WIFI_STA,
+#else
+    WIFI_AP_STA,
+#endif
+    NetworkConfig::mesh_channel,
     0, NetworkConfig::max_conn
   );
   udp.begin(NetworkConfig::osc_from_ap);
