@@ -23,10 +23,10 @@ static const char *TAG = "geo_acid";
   #define TX_PIN D8
 #endif
 
-#define NUM_PARAMS 6
+#define NUM_PARAMS 10
 
 constexpr const char* param_names[NUM_PARAMS] = {
-    "/param1", "/param2", "/param3", "/param4", "/param5", "/param6"
+    "/param1", "/param2", "/param3", "/param4", "/param5", "/param6", "/param7", "/param8", "/param9", "/param10"
 };
 
 OSC_receive_msg rcv_param[NUM_PARAMS] = {
@@ -35,7 +35,11 @@ OSC_receive_msg rcv_param[NUM_PARAMS] = {
     OSC_receive_msg(param_names[2]),
     OSC_receive_msg(param_names[3]),
     OSC_receive_msg(param_names[4]),
-    OSC_receive_msg(param_names[5])
+    OSC_receive_msg(param_names[5]),
+    OSC_receive_msg(param_names[6]),
+    OSC_receive_msg(param_names[7]),
+    OSC_receive_msg(param_names[8]),
+    OSC_receive_msg(param_names[9])
 };
 
 OSC_send_msg snd_ping("/ping");
@@ -77,7 +81,7 @@ void setup() {
   // Mesh network init
   mesh.init(
     NetworkConfig::ssid, NetworkConfig::password, 
-    NetworkConfig::mesh_port, WIFI_AP_STA, 1, 0, NetworkConfig::max_conn
+    NetworkConfig::mesh_port, WIFI_AP_STA, NetworkConfig::mesh_channel, 0, NetworkConfig::max_conn
   );
 
   udp.begin(NetworkConfig::osc_from_ap);
