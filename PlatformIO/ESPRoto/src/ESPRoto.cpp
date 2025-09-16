@@ -43,6 +43,14 @@ const char* TAG = "geo_roto";
 #define STATION_ONLY OBJ_ID!=0
 #endif
 
+#ifndef SEQUENCER
+#define SEQUENCER OBJ_ID==0
+#endif
+
+#if SEQUENCER
+#include "Sequencer.h"
+#endif
+
 #ifndef BAD_DRIVER
 #define BAD_DRIVER 0
 #endif
@@ -138,11 +146,6 @@ MIDI_CREATE_INSTANCE(HardwareSerial, MidiSerial, midi1);
 VL53L4CD sensor;
 Smoothing sensor_filter;
 
-// --- Network ---
-const IPAddress ip(GET_ROTO_IP(OBJ_ID));
-const IPAddress gateway(NetworkConfig::gateway);
-const IPAddress subnet(NetworkConfig::subnet);
-
 int sensor_value = 0;
 float sensor_value_osc;
 
@@ -195,9 +198,13 @@ Task t_start_stepper_dir(2000UL, TASK_ONCE, &start_stepper_after_direction_chang
 int pending_rotation_direction = 1;
 
 
+// ---- Sequencer ----
+#if SEQUENCER
+Sequencer sequencer(udp, OBJ_ID);
+#endif
+
 // ---- Function declarations ----
 
-int normalize_distance(int distance, int radius, int angle);
 void stepper_start(int dir);
 void stepper_stop();
 void servo_tilt(int angle);
@@ -304,11 +311,19 @@ void setup() {
 
   snd_ping.init(broadcast_address);
   snd_reading.init(broadcast_address);
+
+#if SEQUENCER
+  sequencer.start();
+#endif
 }
 
 void loop() {
   runner.execute();
   mesh.update();
+#if SEQUENCER
+  sequencer.update();
+#endif
+
   osc_control_loop(udp, base_address, broadcast_address);
 
   sense();
@@ -334,7 +349,7 @@ void sense() {
   if (millis() - last_time < 40) return;
   last_time = millis();
 
-  #if NO_SENSOR == 0
+#if NO_SENSOR == 0
   sensor.read();
   sensor_value = sensor_filter.filter(sensor.ranging_data.range_mm);
 #else
