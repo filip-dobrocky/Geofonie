@@ -7,7 +7,7 @@
 #include "Score.h"
 #include "NetworkConfig.h"
 
-#define CHECK_NEXT(arr, idx) (idx + 1 < (sizeof(arr) / sizeof(arr[0])))
+#define CHECK_NEXT(state, idx) (idx + 1 < state.msgs_count)
 
 const char* SEQ_TAG = "Sequencer";
 
@@ -43,25 +43,40 @@ class Sequencer {
 
     WiFiUDP& udp;
 
+    // OSC_send_msg
+
     void send_message(const Score::Message& msg) {
-        auto ip = (obj_id == msg.dest_ID) ? WiFi.localIP() : IPAddress(255, 255, 255, 255);
+        auto ip = (obj_id == msg.dest_ID) ? IPAddress(127, 0, 0, 1) : IPAddress(255, 255, 255, 255);
+        
         OSC_send_msg osc(msg.msg);
         osc.init("");
+        osc.send(udp, ip, NetworkConfig::osc_from_ctl);
+        
         if (msg.dest_ID != -1)
             osc.m.add((float)msg.dest_ID);
+        
         osc.m.add(msg.value);
-        osc.send(udp, ip, NetworkConfig::osc_from_ap);
+        // sending twice because of bug
+        osc.send(udp, ip, NetworkConfig::osc_from_ctl);
+        
+        ESP_LOGD(SEQ_TAG, "Sending %s %d %f", msg.msg, msg.dest_ID, msg.value);
+        
+        if (String(msg.msg).startsWith("/toRoto/global")) {
+            osc.m.add(msg.value);
+            osc.send(udp, IPAddress(127, 0, 0, 1), NetworkConfig::osc_from_ctl);
+        }
      };
 
     static void next_message() {
         auto state = Score::score[instance->current_state];
-        auto msg = (CHECK_NEXT(state.msgs, instance->current_msg)) 
+        auto msg = (CHECK_NEXT(state, instance->current_msg)) 
                 ? state.msgs[++instance->current_msg] 
                 : state.msgs[instance->current_msg = 0];
 
         instance->send_message(msg);
 
-        if (CHECK_NEXT(state.msgs, instance->current_msg) || state.loop) {
+        if (CHECK_NEXT(state, instance->current_msg) || state.loop) {
+            ESP_LOGD(SEQ_TAG, "Scheduling next message in %d ms", msg.duration);
             instance->t_next_message.setInterval(msg.duration);
             instance->t_next_message.restartDelayed();
         } else {
@@ -71,12 +86,15 @@ class Sequencer {
 
     void set_state(uint8_t state_id) {
         auto state = Score::score[current_state = state_id];
+        
+        ESP_LOGD(SEQ_TAG, "Entering state %d", state.ID);
+        
         current_msg = 0;
         auto msg = state.msgs[current_msg];
-
         send_message(msg);
 
-        if (CHECK_NEXT(state.msgs, current_msg) || state.loop) {
+        if (CHECK_NEXT(state, current_msg) || state.loop) {
+            ESP_LOGD(SEQ_TAG, "Scheduling next message in %d ms", msg.duration);
             t_next_message.setInterval(msg.duration);
             t_next_message.restartDelayed();
         } else {
@@ -84,6 +102,7 @@ class Sequencer {
         }
 
         if (state.duration > 0) {
+            ESP_LOGD(SEQ_TAG, "Scheduling next state in %d ms", state.duration);
             t_next_state.setInterval(state.duration);
             t_next_state.restartDelayed();
         } else {
@@ -94,14 +113,13 @@ class Sequencer {
 
     static void next_state() {
         auto state = Score::score[instance->current_state];
-        auto next_states_count = sizeof(state.next_states) / sizeof(state.next_states[0]);
-        if (next_states_count == 0) {
+        if (state.next_states_count == 0) {
             ESP_LOGW(SEQ_TAG, "State %d has no next states, stopping sequencer", state.ID);
             instance->t_next_state.disable();
             return;
         }
 
-        instance->current_state = state.next_states[random(0, next_states_count)];
+        instance->current_state = state.next_states[random(0, state.next_states_count)];
         instance->set_state(instance->current_state);
     };
     
