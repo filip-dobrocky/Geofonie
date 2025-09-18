@@ -72,13 +72,10 @@ Generic parameters sent to Daisy Seed as MIDI CC 1-10
 `/toRoto/global/rotation/speed [value]`
 ### Rotation direction
 `/toRoto/global/rotation/direction [value]`
-### Autonomous mode
-Automatic randomization of `/toAcid` parameters
-#### Auto mode on/off
-# TODO: auto messages new version
-`/global/auto [value]`
-#### Auto mode density
-`/global/autoDensity [value]`
+### Roto misc
+`/toRoto/global/misc/[1-6] [value]` 
+### Acid params
+`/toAcid/global/param[1-10] [value]` 
 
 # Network config
 
@@ -87,9 +84,9 @@ Network parameters are defined in `NetworkConfig.h`
 SSID: `TrychtyrLOM`  
 Password: `LomLomLom`  
 
-Port for sending to mesh objects: `54350`  
+Port for sending to mesh objects: `54345`  
 Port for listening to messages from mesh: `54355`  
 
 #### (Deprecated)
 Access point IP: `192.168.0.201`  
-Port for sending OSC messages to AP (objects): `54345`  
+Port for sending OSC messages to AP (objects): `54350`  
