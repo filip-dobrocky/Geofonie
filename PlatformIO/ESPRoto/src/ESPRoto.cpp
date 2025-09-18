@@ -99,6 +99,7 @@ enum TransportMode {
 // ---- Globals ----
 painlessMesh mesh;
 WiFiUDP udp;
+
 const char *base_address = "/toRoto";
 const char *broadcast_address = "/fromRoto";
 
@@ -107,6 +108,9 @@ constexpr int NUM_MISC = MISC_PARAM_NUM;
 constexpr const char* misc_param_names[NUM_MISC] = {
   "/misc/1", "/misc/2", "/misc/3", "/misc/4", "/misc/5", "/misc/6"
 };
+constexpr const char* misc_param_names_global[NUM_MISC] = {
+  "/global/misc/1", "/global/misc/2", "/global/misc/3", "/global/misc/4", "/global/misc/5", "/global/misc/6"
+};
 OSC_receive_msg rcv_misc[NUM_MISC] = {
   OSC_receive_msg(misc_param_names[0]),
   OSC_receive_msg(misc_param_names[1]),
@@ -114,6 +118,15 @@ OSC_receive_msg rcv_misc[NUM_MISC] = {
   OSC_receive_msg(misc_param_names[3]),
   OSC_receive_msg(misc_param_names[4]),
   OSC_receive_msg(misc_param_names[5])
+};
+
+OSC_receive_msg rcv_misc_global[NUM_MISC] = {
+  OSC_receive_msg(misc_param_names_global[0]),
+  OSC_receive_msg(misc_param_names_global[1]),
+  OSC_receive_msg(misc_param_names_global[2]),
+  OSC_receive_msg(misc_param_names_global[3]),
+  OSC_receive_msg(misc_param_names_global[4]),
+  OSC_receive_msg(misc_param_names_global[5])
 };
 
 float misc_osc[NUM_MISC] = {1.0f};
@@ -290,11 +303,13 @@ void setup() {
     NetworkConfig::mesh_channel,
     0, NetworkConfig::max_conn
   );
-  udp.begin(NetworkConfig::osc_from_ap);
+
+  udp.begin(NetworkConfig::osc_from_ctl);
 
   // Setup OSC receive handlers for misc params
   for (int i = 0; i < NUM_MISC; ++i) {
     rcv_misc[i].init(misc_osc_callback);
+    rcv_misc_global[i].init(misc_osc_callback);
   }
 
   rcv_rotation_speed.init(rotation_osc_callback);
@@ -489,6 +504,11 @@ void rotation_osc_callback(OSCMessage& m) {
         // not global and not for this object
         return;
     }
+  } else {
+    if (m.size() < 1) {
+        ESP_LOGW(TAG, "Invalid global rotation message");
+        return;
+    }
   }
 
   static int last_speed = 1;
@@ -542,20 +562,28 @@ void calibration_osc_callback(OSCMessage& m) {
 
 
 void misc_osc_callback(OSCMessage& msg) {
-  if (msg.size() < 2) {
-    ESP_LOGW(TAG, "Invalid misc message");
-    return;
-  }
-
-  if (msg.getFloat(0) != (float)OBJ_ID) {
-    return;
-  }
-
   String addr = msg.getAddress();
+  bool global = addr.startsWith("/toRoto/global/");
+  int val_idx = global ? 0 : 1;
+
+  if (!global) {
+    if (msg.size() < 2) {
+      ESP_LOGW(TAG, "Invalid misc message");
+      return;
+    }
+    if (msg.getFloat(0) != (float)OBJ_ID) {
+      return;
+    }
+  } else {
+    if (msg.size() < 1) {
+      ESP_LOGW(TAG, "Invalid global misc message");
+      return;
+    }
+  }
 
   for (int i = 0; i < NUM_MISC; ++i) {
     if (addr.endsWith(misc_param_names[i])) {
-      misc_osc[i] = msg.getFloat(1);
+      misc_osc[i] = msg.getFloat(val_idx);
       ESP_LOGD(TAG, "Misc param %s: %f", misc_param_names[i], misc_osc[i]);
       break;
     }

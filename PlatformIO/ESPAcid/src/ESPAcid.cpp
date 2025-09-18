@@ -33,6 +33,10 @@ constexpr const char* param_names[NUM_PARAMS] = {
     "/param1", "/param2", "/param3", "/param4", "/param5", "/param6", "/param7", "/param8", "/param9", "/param10"
 };
 
+constexpr const char* param_names_global[NUM_PARAMS] = {
+    "/global/param1", "/global/param2", "/global/param3", "/global/param4", "/global/param5", "/global/param6", "/global/param7", "/global/param8", "/global/param9", "/global/param10"
+};
+
 OSC_receive_msg rcv_param[NUM_PARAMS] = {
     OSC_receive_msg(param_names[0]),
     OSC_receive_msg(param_names[1]),
@@ -46,6 +50,19 @@ OSC_receive_msg rcv_param[NUM_PARAMS] = {
     OSC_receive_msg(param_names[9])
 };
 
+OSC_receive_msg rcv_param_global[NUM_PARAMS] = {
+    OSC_receive_msg(param_names_global[0]),
+    OSC_receive_msg(param_names_global[1]),
+    OSC_receive_msg(param_names_global[2]),
+    OSC_receive_msg(param_names_global[3]),
+    OSC_receive_msg(param_names_global[4]),
+    OSC_receive_msg(param_names_global[5]),
+    OSC_receive_msg(param_names_global[6]),
+    OSC_receive_msg(param_names_global[7]),
+    OSC_receive_msg(param_names_global[8]),
+    OSC_receive_msg(param_names_global[9])
+};
+
 OSC_send_msg snd_ping("/ping");
 
 // ---- Globals ----
@@ -56,7 +73,7 @@ MIDI_CREATE_INSTANCE(HardwareSerial, MidiSerial, midi1);
 
 painlessMesh mesh;
 
-float osc_params[NUM_PARAMS] = {0};
+float osc_params[NUM_PARAMS] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 1}; // piezo on, master max
 
 WiFiUDP udp;
 const char *base_address = "/toAcid";
@@ -94,11 +111,12 @@ void setup() {
     NetworkConfig::mesh_channel, 0, NetworkConfig::max_conn
   );
 
-  udp.begin(NetworkConfig::osc_from_ap);
+  udp.begin(NetworkConfig::osc_from_ctl);
 
   // Generate parameter names and create OSC objects
   for (int i = 0; i < NUM_PARAMS; ++i) {
     rcv_param[i].init(generic_param_callback);
+    rcv_param_global[i].init(generic_param_callback);
   }
 
   snd_ping.init(broadcast_address);
@@ -114,21 +132,32 @@ void loop() {
 // ---- OSC Callbacks ----
 
 void generic_param_callback(OSCMessage &msg) {
-  if (msg.size() < 2) {
-    ESP_LOGW(TAG, "Param message with insufficient args");
-    return;
-  }
   String addr = msg.getAddress();
+  bool global = addr.startsWith("/toAcid/global/");
+  int val_idx = global ? 0 : 1;
 
-  ESP_LOGD(TAG, "Received param message %s: %f, %f", addr.c_str(), msg.getFloat(0), msg.getFloat(1));
+  if (!global) {
+    if (msg.size() < 2) {
+      ESP_LOGW(TAG, "Param message with insufficient args");
+      return;
+    }
+    if (msg.getFloat(0) != (float)OBJ_ID) {
+      return;
+    }
+  } else {
+    if (msg.size() < 1) {
+      ESP_LOGW(TAG, "Invalid global param message");
+      return;
+    }
+  }
 
-  if (msg.getFloat(0) == (float)OBJ_ID) {
-    for (int i = 0; i < NUM_PARAMS; ++i) {
-      if (addr.endsWith(param_names[i])) {
-        osc_params[i] = msg.getFloat(1);
-        ESP_LOGI(TAG, "Param %d set to %f", i + 1, osc_params[i]);
-        break;
-      }
+  ESP_LOGD(TAG, "Received param message %s: %f", addr.c_str(), msg.getFloat(val_idx));
+
+  for (int i = 0; i < NUM_PARAMS; ++i) {
+    if (addr.endsWith(param_names[i])) {
+      osc_params[i] = msg.getFloat(val_idx);
+      ESP_LOGI(TAG, "Param %d set to %f", i + 1, osc_params[i]);
+      break;
     }
   }
 }
