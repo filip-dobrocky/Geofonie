@@ -66,22 +66,18 @@ class Sequencer {
 
     void send_message(const Score::Message& msg) {
         auto ip = (obj_id == msg.dest_ID) ? IPAddress(127, 0, 0, 1) : IPAddress(255, 255, 255, 255);
-        
         OSC_send_msg osc(msg.msg);
         osc.init("");
         osc.send(udp, ip, NetworkConfig::osc_from_ctl);
-        
         if (msg.dest_ID != -1)
             osc.m.add((float)msg.dest_ID);
-        
-        osc.m.add(msg.value);
+        float value = msg.get_value();
+        osc.m.add(value);
         // sending twice because of bug
         osc.send(udp, ip, NetworkConfig::osc_from_ctl);
-        
-        ESP_LOGD(SEQ_TAG, "Sending %s %d %f", msg.msg, msg.dest_ID, msg.value);
-        
+        ESP_LOGD(SEQ_TAG, "Sending %s %d %f", msg.msg, msg.dest_ID, value);
         if (String(msg.msg).startsWith("/toRoto/global")) {
-            osc.m.add(msg.value);
+            osc.m.add(value);
             osc.send(udp, IPAddress(127, 0, 0, 1), NetworkConfig::osc_from_ctl);
         }
      };

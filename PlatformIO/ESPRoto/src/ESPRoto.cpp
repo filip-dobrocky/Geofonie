@@ -77,7 +77,7 @@ const char* TAG = "geo_roto";
 #define MIN_ANGLE 40
 #define MAX_ANGLE 99
 
-#define MIN_DISTANCE 200
+#define MIN_DISTANCE 120
 #define MAX_DISTANCE 400
 
 #define STEPS_PER_ROTATION 13500
@@ -362,7 +362,7 @@ void loop() {
 
 void sense() {
   static uint32_t last_time = 0;
-  if (millis() - last_time < 40) return;
+  if (millis() - last_time < 17) return;
   last_time = millis();
 
 #if NO_SENSOR == 0
