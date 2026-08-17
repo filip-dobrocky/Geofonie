@@ -1,7 +1,9 @@
 #ifndef Smoothing_h
 #define Smoothing_h
 
-#define NUM_READINGS 10
+// Paired with SENSOR_TIMING_BUDGET in ESPRoto.cpp -- raise that before this,
+// integration is quieter per ms of latency than averaging after the fact.
+#define NUM_READINGS 4
 
 class Smoothing {
   public:
