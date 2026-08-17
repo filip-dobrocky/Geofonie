@@ -74,6 +74,24 @@ int g_obj_id = -1;
 #define STEPS_PER_ROTATION 13500
 #define DEGREES_PER_ROTATION 10
 
+// ---- Auto-calibration ----
+// Scans the object once per boot: the servo is held still for a full rotation at
+// each angle, so only one axis moves at a time. Tuning knobs for a physical rig.
+// Upper bound, not a haste setting: a rotation takes STEPS_PER_ROTATION/CAL_SPEED
+// seconds and samples every SENSOR_PERIOD, so faster thins the azimuthal scan
+// (4000 -> 3.4 s -> ~140 samples/rotation -> one every 2.6 degrees).
+#define CAL_SPEED 4000
+#define CAL_ANGLE_STEP 4
+#define CAL_ANGLE_COUNT (((MAX_ANGLE - MIN_ANGLE) / CAL_ANGLE_STEP) + 1)
+// Servo travel between two adjacent stops.
+#define CAL_SETTLE_MS 200
+// Below this span across a rotation an angle is the pedestal, not the object.
+#define CAL_FLAT_SPAN_MM 8
+// Widens the measured window so the extremes don't sit exactly on 0 and 127.
+#define CAL_MARGIN_MM 5
+// Below this share of in-range samples the sensor is pointing past the object.
+#define CAL_MIN_VALID_PCT 50
+
 #define MISC_PARAM_NUM 6
 
 // Sensor telemetry period. Every reading is a mesh broadcast, so five objects at
@@ -148,9 +166,14 @@ OSC_receive_msg rcv_servo_calibrate("/servo/calibrate");
 
 OSC_receive_msg rcv_min_distance("/calibration/minDist");
 OSC_receive_msg rcv_max_distance("/calibration/maxDist");
+OSC_receive_msg rcv_calibration_auto("/calibration/auto");
+OSC_receive_msg rcv_global_min_distance("/global/calibration/minDist");
+OSC_receive_msg rcv_global_max_distance("/global/calibration/maxDist");
+OSC_receive_msg rcv_global_calibration_auto("/global/calibration/auto");
 
 OSC_send_msg snd_ping("/ping");
 OSC_send_msg snd_reading("/reading");
+OSC_send_msg snd_calibration("/calibration");
 
 // ---- MIDI ----
 HardwareSerial MidiSerial(1);
@@ -167,6 +190,33 @@ float sensor_value_osc;
 
 float min_distance_osc = 0;
 float max_distance_osc = 1;
+
+// ---- Auto-calibration state ----
+enum CalPhase {
+  CAL_OFF,
+  CAL_SETTLE,   // servo moving to the next angle, nothing recorded
+  CAL_MEASURE   // servo still, recording one full rotation
+};
+
+struct CalRow {
+  uint16_t min_mm;
+  uint16_t max_mm;
+  uint16_t valid;
+  uint16_t total;
+};
+
+CalPhase cal_phase = CAL_OFF;
+CalRow cal_rows[CAL_ANGLE_COUNT];
+uint8_t cal_index = 0;
+int32_t cal_start_steps = 0;
+uint32_t cal_settle_until = 0;
+uint32_t cal_deadline = 0;
+
+// Transport state the scan takes over, restored when it ends. Messages arriving
+// mid-run are parked here instead of applied.
+int cal_saved_speed = 0;
+int cal_saved_direction = 1;
+enum TransportMode cal_saved_mode = STATIC;
 
 // ---- Speed settings ----
 const int SPEED_MIN = 2;
@@ -227,6 +277,10 @@ void midi_send();
 void ping();
 void send_info();
 void sense();
+
+void start_calibration();
+void update_calibration(uint16_t raw_mm, bool raw_valid);
+void finish_calibration(bool completed);
 
 void servo_osc_callback(OSCMessage& m);
 void rotation_osc_callback(OSCMessage& m);
@@ -326,11 +380,18 @@ void setup() {
   rcv_servo_calibrate.init(servo_osc_callback);
   rcv_min_distance.init(calibration_osc_callback);
   rcv_max_distance.init(calibration_osc_callback);
+  rcv_calibration_auto.init(calibration_osc_callback);
+  rcv_global_min_distance.init(calibration_osc_callback);
+  rcv_global_max_distance.init(calibration_osc_callback);
+  rcv_global_calibration_auto.init(calibration_osc_callback);
 
   snd_ping.init(broadcast_address);
   snd_reading.init(broadcast_address);
+  snd_calibration.init(broadcast_address);
 
   if (g_obj_id == 0) sequencer.start();
+
+  start_calibration();
 }
 
 void loop() {
@@ -374,10 +435,16 @@ void sense() {
 
 #if NO_SENSOR == 0
   sensor.read();
-  sensor_value = sensor_filter.filter(sensor.ranging_data.range_mm);
+  uint16_t raw_mm = sensor.ranging_data.range_mm;
+  bool raw_valid = sensor.ranging_data.range_status == 0;
+  sensor_value = sensor_filter.filter(raw_mm);
 #else
   sensor_value = (MIN_DISTANCE + MAX_DISTANCE) / 2;
+  uint16_t raw_mm = sensor_value;
+  bool raw_valid = true;
 #endif
+  update_calibration(raw_mm, raw_valid);
+
   sensor_value_osc = constrain((float)(sensor_value - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE), 0.0f, 1.0f);
   int min_d = (int)floor(MIN_DISTANCE + min_distance_osc * (MAX_DISTANCE - MIN_DISTANCE));
   int max_d = (int)floor(MIN_DISTANCE + max_distance_osc * (MAX_DISTANCE - MIN_DISTANCE));
@@ -389,6 +456,159 @@ void sense() {
   for (int i = 0; i < NUM_MISC; ++i) {
     misc_midi[i] = FLOAT_TO_MIDI(misc_osc[i]);
   }
+}
+
+// === Auto-calibration ===
+
+static inline int cal_angle(uint8_t i) { return MIN_ANGLE + i * CAL_ANGLE_STEP; }
+
+void start_calibration() {
+  if (cal_phase != CAL_OFF) return;
+
+  cal_saved_speed = stepper_speed;
+  cal_saved_direction = rotation_direction;
+  cal_saved_mode = transport_mode;
+
+  // STATIC is what keeps transport() off the servo while the scan holds each angle
+  transport_mode = STATIC;
+  stepper_speed = CAL_SPEED;
+  stepper.setSpeedInStepsPerSecond(CAL_SPEED);
+  t_disable_stepper.disable();
+  stepper_start(rotation_direction);
+
+  for (int i = 0; i < CAL_ANGLE_COUNT; ++i) cal_rows[i] = {UINT16_MAX, 0, 0, 0};
+
+  cal_index = 0;
+  angle = cal_angle(0);
+  servo.write(angle);
+  cal_settle_until = millis() + CAL_SETTLE_MS;
+  cal_phase = CAL_SETTLE;
+  cal_deadline = millis() + 2UL * CAL_ANGLE_COUNT *
+                 ((1000UL * STEPS_PER_ROTATION) / CAL_SPEED + CAL_SETTLE_MS);
+
+  ESP_LOGI(TAG, "Calibration started, %d angles from %d to %d deg",
+           CAL_ANGLE_COUNT, cal_angle(0), cal_angle(CAL_ANGLE_COUNT - 1));
+}
+
+void update_calibration(uint16_t raw_mm, bool raw_valid) {
+  if (cal_phase == CAL_OFF) return;
+
+  if ((int32_t)(millis() - cal_deadline) >= 0) {
+    ESP_LOGW(TAG, "Calibration timed out at angle %d", cal_angle(cal_index));
+    finish_calibration(false);
+    return;
+  }
+
+  // The moving average still carries samples from the previous angle until it has
+  // refilled, so a reading only counts once the whole window is in range.
+  static uint8_t valid_streak = 0;
+  const bool in_range = raw_valid && raw_mm >= MIN_DISTANCE && raw_mm <= MAX_DISTANCE;
+  if (in_range) {
+    if (valid_streak < NUM_READINGS) valid_streak++;
+  } else {
+    valid_streak = 0;
+  }
+
+  if (cal_phase == CAL_SETTLE) {
+    if (millis() < cal_settle_until) return;
+    // Latched after settling, so the recorded window is a full 360 degrees
+    cal_start_steps = stepper.getCurrentPositionInSteps();
+    cal_phase = CAL_MEASURE;
+    return;
+  }
+
+  CalRow &row = cal_rows[cal_index];
+  row.total++;
+  if (in_range && valid_streak >= NUM_READINGS) {
+    row.valid++;
+    if (sensor_value < row.min_mm) row.min_mm = sensor_value;
+    if (sensor_value > row.max_mm) row.max_mm = sensor_value;
+  }
+
+  // Read once: abs() is a macro and would poll the stepper service twice
+  const int32_t turned = stepper.getCurrentPositionInSteps() - cal_start_steps;
+  if (abs(turned) < STEPS_PER_ROTATION) return;
+
+  ESP_LOGD(TAG, "Calibration angle %d: %d..%d mm, %d/%d valid",
+           cal_angle(cal_index), row.min_mm, row.max_mm, row.valid, row.total);
+
+  if (++cal_index >= CAL_ANGLE_COUNT) {
+    finish_calibration(true);
+    return;
+  }
+
+  angle = cal_angle(cal_index);
+  servo.write(angle);
+  valid_streak = 0;
+  cal_settle_until = millis() + CAL_SETTLE_MS;
+  cal_phase = CAL_SETTLE;
+}
+
+void finish_calibration(bool completed) {
+  int run_start = -1, run_len = 0, best_start = -1, best_len = 0;
+
+  // ponytail: flatness alone can't tell a rotationally symmetric object (cylinder,
+  // vase) from the pedestal -- both read constant, and the band collapses to the
+  // defaults. Upgrade path is ranging_data.signal_rate_kcps, which the driver
+  // already fills in: sky returns no signal whatever the object's shape.
+  for (int i = 0; completed && i < CAL_ANGLE_COUNT; ++i) {
+    const CalRow &r = cal_rows[i];
+    const bool object = r.total > 0 &&
+                        r.valid * 100 >= r.total * CAL_MIN_VALID_PCT &&   // else sky
+                        (r.max_mm - r.min_mm) >= CAL_FLAT_SPAN_MM;        // else pedestal
+    if (!object) {
+      run_start = -1;
+      continue;
+    }
+    if (run_start < 0) { run_start = i; run_len = 0; }
+    if (++run_len > best_len) { best_len = run_len; best_start = run_start; }
+  }
+
+  if (best_len > 0) {
+    uint16_t min_mm = UINT16_MAX, max_mm = 0;
+    for (int i = best_start; i < best_start + best_len; ++i) {
+      if (cal_rows[i].min_mm < min_mm) min_mm = cal_rows[i].min_mm;
+      if (cal_rows[i].max_mm > max_mm) max_mm = cal_rows[i].max_mm;
+    }
+    const int lo_mm = constrain((int)min_mm - CAL_MARGIN_MM, MIN_DISTANCE, MAX_DISTANCE - 1);
+    const int hi_mm = constrain((int)max_mm + CAL_MARGIN_MM, lo_mm + 1, MAX_DISTANCE);
+    min_distance_osc = (float)(lo_mm - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE);
+    max_distance_osc = (float)(hi_mm - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE);
+
+    const int lo_ang = cal_angle(best_start);
+    const int hi_ang = cal_angle(best_start + best_len - 1);
+    center_angle = (lo_ang + hi_ang) / 2;
+    angle_dif = (hi_ang - lo_ang) / 2;
+
+    ESP_LOGI(TAG, "Calibration done: %d..%d mm, angles %d..%d", lo_mm, hi_mm, lo_ang, hi_ang);
+  } else {
+    ESP_LOGW(TAG, "Calibration found no object band, keeping previous values");
+  }
+
+  cal_phase = CAL_OFF;
+  transport_mode = cal_saved_mode;
+  angle = center_angle;
+  servo.write(center_angle);
+
+  stepper_speed = cal_saved_speed;
+  stepper.setSpeedInStepsPerSecond(stepper_speed > 0 ? stepper_speed : 1);
+  if (stepper_speed == 0) {
+    stepper_stop();
+  } else if (cal_saved_direction != rotation_direction) {
+    rotation_direction = cal_saved_direction;
+    stepper_stop();
+    pending_rotation_direction = rotation_direction;
+    t_start_stepper_dir.restartDelayed(2000UL);
+  } else {
+    stepper_start(rotation_direction);
+  }
+
+  snd_calibration.m.add((float)g_obj_id);
+  snd_calibration.m.add(min_distance_osc);
+  snd_calibration.m.add(max_distance_osc);
+  snd_calibration.m.add((float)center_angle);
+  snd_calibration.m.add((float)angle_dif);
+  node.send_info(snd_calibration.m);
 }
 
 void stepper_start(int dir) {
@@ -459,6 +679,12 @@ void servo_osc_callback(OSCMessage& m) {
 
   String adr = m.getAddress();
 
+  // The scan holds the servo itself and derives both from what it measures
+  if (cal_phase != CAL_OFF && (adr.endsWith("/center") || adr.endsWith("/angle"))) return;
+
+  // Parked while calibrating: takes effect when the scan restores the transport
+  enum TransportMode &mode_target = (cal_phase != CAL_OFF) ? cal_saved_mode : transport_mode;
+
   if (adr.endsWith("/center")) {
     center_angle = MIN_ANGLE + int(floor(m.getFloat(1) * (MAX_ANGLE - MIN_ANGLE)));
     servo.write(center_angle);
@@ -475,15 +701,15 @@ void servo_osc_callback(OSCMessage& m) {
   else if (adr.endsWith("/mode")) {
     switch ((int)m.getFloat(1)) {
       case 0:
-        transport_mode = STATIC;
+        mode_target = STATIC;
         ESP_LOGD(TAG, "Transport mode: STATIC");
         break;
       case 1:
-        transport_mode = LINEAR;
+        mode_target = LINEAR;
         ESP_LOGD(TAG, "Transport mode: LINEAR");
         break;
       case 2:
-        transport_mode = ALTERNATING;
+        mode_target = ALTERNATING;
         ESP_LOGD(TAG, "Transport mode: ALTERNATING");
         break;
     }
@@ -521,6 +747,20 @@ void rotation_osc_callback(OSCMessage& m) {
 
   static int last_speed = 1;
 
+  // The scan needs a fixed speed and direction; park what arrives mid-run so it
+  // takes effect when the scan restores the transport. last_speed has to move with
+  // it, or the restored speed and the start/stop edge detection disagree.
+  if (cal_phase != CAL_OFF) {
+    if (adr.endsWith("/speed")) {
+      cal_saved_speed = (int)(floor(m.getFloat(val_idx) * SPEED_MAX));
+      last_speed = cal_saved_speed;
+      speed_midi = FLOAT_TO_MIDI((float)(cal_saved_speed) / (SPEED_MAX));
+    } else if (adr.endsWith("/direction")) {
+      cal_saved_direction = m.getFloat(val_idx) > 0 ? -1 : 1;
+    }
+    return;
+  }
+
   if (adr.endsWith("/speed")) {
     stepper_speed = (int)(floor(m.getFloat(val_idx) * SPEED_MAX));
     ESP_LOGD(TAG, "Speed: %d", stepper_speed);
@@ -547,23 +787,35 @@ void rotation_osc_callback(OSCMessage& m) {
 
 
 void calibration_osc_callback(OSCMessage& m) {
-  if (m.size() < 2) {
-    ESP_LOGW(TAG, "Invalid calibration message");
-    return;
-  }
-
-  if (m.getFloat(0) != (float)g_obj_id) {
-    return;
-  }
-
   String adr = m.getAddress();
+  bool global = adr.startsWith("/toRoto/global/");
+  int val_idx = global ? 0 : 1;
 
-  if (adr.endsWith("/minDist")) {
-    min_distance_osc = constrain(m.getFloat(1), 0.0f, 1.0f);
+  if (!global) {
+    if (m.size() < 2) {
+      ESP_LOGW(TAG, "Invalid calibration message");
+      return;
+    }
+    if (m.getFloat(0) != (float)g_obj_id) {
+      // not global and not for this object
+      return;
+    }
+  } else {
+    if (m.size() < 1) {
+      ESP_LOGW(TAG, "Invalid global calibration message");
+      return;
+    }
+  }
+
+  if (adr.endsWith("/auto")) {
+    if (m.getFloat(val_idx) > 0) start_calibration();
+  }
+  else if (adr.endsWith("/minDist")) {
+    min_distance_osc = constrain(m.getFloat(val_idx), 0.0f, 1.0f);
     ESP_LOGD(TAG, "Min distance: %d", (int)floor(MIN_DISTANCE + min_distance_osc * (MAX_DISTANCE - MIN_DISTANCE)));
-  } 
+  }
   else if (adr.endsWith("/maxDist")) {
-    max_distance_osc = constrain(m.getFloat(1), 0.0f, 1.0f);
+    max_distance_osc = constrain(m.getFloat(val_idx), 0.0f, 1.0f);
     ESP_LOGD(TAG, "Max distance: %d", (int)floor(MIN_DISTANCE + max_distance_osc * (MAX_DISTANCE - MIN_DISTANCE)));
   }
 }

@@ -65,12 +65,6 @@ namespace Score {
 
     // initial
     const Message state0_msgs[] PROGMEM = {
-    {"/toRoto/calibration/minDist", 0, CONST(0.3f), 100}, // calibration
-    {"/toRoto/calibration/maxDist", 0, CONST(0.75f), 100},
-    {"/toRoto/calibration/minDist", 1, CONST(0.3f), 100},
-    {"/toRoto/calibration/maxDist", 1, CONST(0.8f), 100},
-    {"/toRoto/calibration/minDist", 2, CONST(0.01f), 100},
-    {"/toRoto/calibration/maxDist", 2, CONST(0.5f), 100},
     {"/toRoto/global/misc/2", -1, CONST(0.9f), 100}, // brightness manual high
     {"/toRoto/global/misc/3", -1, CONST(0.0f), 100}, // engine 0
     {"/toRoto/misc/4", 0, CONST(0.164f), 100}, // root

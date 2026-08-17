@@ -53,6 +53,15 @@ Stop automatic movement and set angle based on `center` message
 `/toRoto/calibration/minDist [obj_id] [value]`  
 #### Upper limit:
 `/toRoto/calibration/maxDist [obj_id] [value]`  
+#### Auto-calibration (0 / 1):
+Scans the object once: the servo is held still for a full rotation at each angle, then
+the distance window (`minDist`/`maxDist`) and the servo tilt band (`center`/`angle`) are
+derived from what was measured. Takes about a minute. Runs on every startup, so the values
+are never stored -- the object has usually moved by the next power-up anyway.  
+`/toRoto/calibration/auto [obj_id] [value]`  
+#### Measured calibration:
+Sent from object to all devices when a scan finishes  
+`/fromRoto/calibration [obj_id] [minDist] [maxDist] [center_angle] [angle_dif]`  
 
 #### Value read from sensor (0..1):
 Sent from object to all devices  
@@ -74,6 +83,8 @@ Generic parameters sent to Daisy Seed as MIDI CC 1-10
 `/toRoto/global/rotation/direction [value]`
 ### Roto misc
 `/toRoto/global/misc/[1-6] [value]` 
+### Sensor calibration
+`/toRoto/global/calibration/minDist [value]`, `/toRoto/global/calibration/maxDist [value]`, `/toRoto/global/calibration/auto [value]`
 ### Acid params
 `/toAcid/global/param[1-10] [value]` 
 
