@@ -19,12 +19,9 @@
 
 #pragma once
 #include <Arduino.h>
-#include <WiFi.h>
-#include <TaskScheduler.h>
-#include "osc_control.h"
 
+#include "GeoNode.h"  // must precede TaskScheduler.h; see the note in ESPRoto.cpp
 #include "Score.h"
-#include "NetworkConfig.h"
 
 #define CHECK_NEXT(state, idx) (idx + 1 < state.msgs_count)
 
@@ -34,7 +31,7 @@ class Sequencer {
    public:
     static Sequencer* instance;
 
-    Sequencer(WiFiUDP& udp, uint8_t obj_id = -1) : obj_id(obj_id), udp(udp) {
+    Sequencer(GeoNode& node) : node(node) {
         _scheduler.startNow();
 
         Sequencer::instance = this;
@@ -56,30 +53,19 @@ class Sequencer {
    private:
     Scheduler _scheduler;
 
-    uint8_t obj_id = -1;
     uint8_t current_state = 0;
     uint8_t current_msg = 0;
 
-    WiFiUDP& udp;
-
-    // OSC_send_msg
+    GeoNode& node;
 
     void send_message(const Score::Message& msg) {
-        auto ip = (obj_id == msg.dest_ID) ? IPAddress(127, 0, 0, 1) : IPAddress(255, 255, 255, 255);
-        OSC_send_msg osc(msg.msg);
-        osc.init("");
-        osc.send(udp, ip, NetworkConfig::osc_from_ctl);
+        OSCMessage osc(msg.msg);
         if (msg.dest_ID != -1)
-            osc.m.add((float)msg.dest_ID);
+            osc.add((float)msg.dest_ID);
         float value = msg.get_value();
-        osc.m.add(value);
-        // sending twice because of bug
-        osc.send(udp, ip, NetworkConfig::osc_from_ctl);
+        osc.add(value);
+        node.send_osc(osc);
         ESP_LOGD(SEQ_TAG, "Sending %s %d %f", msg.msg, msg.dest_ID, value);
-        if (String(msg.msg).startsWith("/toRoto/global")) {
-            osc.m.add(value);
-            osc.send(udp, IPAddress(127, 0, 0, 1), NetworkConfig::osc_from_ctl);
-        }
      };
 
     static void next_message() {

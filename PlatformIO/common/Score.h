@@ -27,6 +27,8 @@
 #define CONST(f) []() -> float { return (float)(constrain(f, 0.0f, 1.0f)); }
 #define RAND_DIR() []() -> float { return (random(0, 2) * 2 - 1); }
 
+#define COUNT_OF(a) (sizeof(a) / sizeof((a)[0]))
+
 // Musical interval macros (root float offset for MIDI mapping 36-84)
 #define I_MINOR2ND    (1.0f/48.0f)
 #define I_MAJOR2ND    (2.0f/48.0f)
@@ -63,12 +65,12 @@ namespace Score {
 
     // initial
     const Message state0_msgs[] PROGMEM = {
-    {"/toRoto/minDist", 0, CONST(0.3f), 100}, // calibration
-    {"/toRoto/maxDist", 0, CONST(0.75f), 100},
-    {"/toRoto/minDist", 1, CONST(0.3f), 100},
-    {"/toRoto/maxDist", 1, CONST(0.8f), 100},
-    {"/toRoto/minDist", 2, CONST(0.01f), 100},
-    {"/toRoto/maxDist", 2, CONST(0.5f), 100},
+    {"/toRoto/calibration/minDist", 0, CONST(0.3f), 100}, // calibration
+    {"/toRoto/calibration/maxDist", 0, CONST(0.75f), 100},
+    {"/toRoto/calibration/minDist", 1, CONST(0.3f), 100},
+    {"/toRoto/calibration/maxDist", 1, CONST(0.8f), 100},
+    {"/toRoto/calibration/minDist", 2, CONST(0.01f), 100},
+    {"/toRoto/calibration/maxDist", 2, CONST(0.5f), 100},
     {"/toRoto/global/misc/2", -1, CONST(0.9f), 100}, // brightness manual high
     {"/toRoto/global/misc/3", -1, CONST(0.0f), 100}, // engine 0
     {"/toRoto/misc/4", 0, CONST(0.164f), 100}, // root
@@ -152,12 +154,11 @@ namespace Score {
     const uint8_t state3_next[] PROGMEM = {0, 4};
     const uint8_t state4_next[] PROGMEM = {0, 3};
 
-    // Update msg and state counts when changing above arrays!
     const State score[] PROGMEM = {
-    {0, state0_msgs, 15, state0_next, 2, 35000, true},
-    {1, state1_msgs, 14, state1_next, 2, 60000, true},
-    {2, state2_msgs, 12, state2_next, 2, 80000, true},
-    {3, state3_msgs, 14, state3_next, 2, 30000, true},
-    {4, state4_msgs, 13, state4_next, 2, 50000, true},
+    {0, state0_msgs, COUNT_OF(state0_msgs), state0_next, COUNT_OF(state0_next), 35000, true},
+    {1, state1_msgs, COUNT_OF(state1_msgs), state1_next, COUNT_OF(state1_next), 60000, true},
+    {2, state2_msgs, COUNT_OF(state2_msgs), state2_next, COUNT_OF(state2_next), 80000, true},
+    {3, state3_msgs, COUNT_OF(state3_msgs), state3_next, COUNT_OF(state3_next), 30000, true},
+    {4, state4_msgs, COUNT_OF(state4_msgs), state4_next, COUNT_OF(state4_next), 50000, true},
     };
 }

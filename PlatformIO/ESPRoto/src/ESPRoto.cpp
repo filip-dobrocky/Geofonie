@@ -18,39 +18,30 @@
  */
 
 #include <Arduino.h>
-#include <painlessMesh.h>
-#include <WiFi.h>
-#include <WiFiUdp.h>
 #include <MIDI.h>
 #include <Wire.h>
 #include <VL53L4CD.h>
 #include <ESP_FlexyStepper.h>
 #include <ESP32Servo.h>
-#include "osc_control.h"
-#include <TaskScheduler.h>
 
-#include "NetworkConfig.h"
+// GeoNode.h (painlessMesh) must pull in TaskScheduler: it sets _TASK_STD_FUNCTION
+// first, and including TaskScheduler.h ahead of it locks in a Task without
+// std::function callbacks, which mesh.addTask() then fails to construct.
+#include "GeoNode.h"
+#include "GeoIdentity.h"
+#include "GeoOta.h"
 #include "GEOUtils.h"
 #include "Smoothing.h"
+#include "Sequencer.h"
 
 // Constants
 const char* TAG = "geo_roto";
 
-#ifndef OBJ_ID
-#define OBJ_ID 0
-#endif
+#define FW_VERSION 1
 
-#ifndef STATION_ONLY
-#define STATION_ONLY OBJ_ID!=0
-#endif
-
-#ifndef SEQUENCER
-#define SEQUENCER OBJ_ID==0
-#endif
-
-#if SEQUENCER
-#include "Sequencer.h"
-#endif
+// Object id at runtime: read from NVS by the generic OTA image, seeded over USB
+// by the per-node provisioning envs (-DOBJ_ID=n). -1 means unprovisioned.
+int g_obj_id = -1;
 
 #ifndef BAD_DRIVER
 #define BAD_DRIVER 0
@@ -85,6 +76,10 @@ const char* TAG = "geo_roto";
 
 #define MISC_PARAM_NUM 6
 
+// Sensor telemetry period. Every reading is a mesh broadcast, so five objects at
+// 500 ms is already ~10 messages/s on a shared bus -- raise before lowering.
+#define READING_PERIOD 500
+
 #ifndef NO_SENSOR
 #define NO_SENSOR 0
 #endif
@@ -98,11 +93,12 @@ enum TransportMode {
 };
 
 // ---- Globals ----
-painlessMesh mesh;
-WiFiUDP udp;
-
 const char *base_address = "/toRoto";
 const char *broadcast_address = "/fromRoto";
+
+GeoConfig geo_cfg{-1, false, base_address, broadcast_address, "roto"};
+GeoNode node(geo_cfg);
+GeoOta ota(node.mesh(), "roto");
 
 // ---- Misc OSC params  ----
 constexpr int NUM_MISC = MISC_PARAM_NUM;
@@ -139,14 +135,13 @@ OSC_receive_msg rcv_global_rotation_speed("/global/rotation/speed");
 OSC_receive_msg rcv_global_rotation_direction("/global/rotation/direction");
 
 OSC_receive_msg rcv_servo_center("/servo/center");
-OSC_receive_msg rcv_servo_tilt("/servo/tilt");
 OSC_receive_msg rcv_servo_angle("/servo/angle");
 OSC_receive_msg rcv_servo_mode("/servo/mode");
 OSC_receive_msg rcv_servo_direction("/servo/direction");
 OSC_receive_msg rcv_servo_calibrate("/servo/calibrate");
 
-OSC_receive_msg rcv_min_distance("/calibration/min_distance");
-OSC_receive_msg rcv_max_distance("/calibration/max_distance");
+OSC_receive_msg rcv_min_distance("/calibration/minDist");
+OSC_receive_msg rcv_max_distance("/calibration/maxDist");
 
 OSC_send_msg snd_ping("/ping");
 OSC_send_msg snd_reading("/reading");
@@ -213,9 +208,8 @@ int pending_rotation_direction = 1;
 
 
 // ---- Sequencer ----
-#if SEQUENCER
-Sequencer sequencer(udp, OBJ_ID);
-#endif
+// Object 0 plays the score; started at runtime, once the id is known.
+Sequencer sequencer(node);
 
 // ---- Function declarations ----
 
@@ -292,20 +286,22 @@ void setup() {
   stepper.startAsService(1);
   stepper_start(rotation_direction);
 
-  // Mesh network init
-  mesh.init(
-    NetworkConfig::ssid, NetworkConfig::password,
-    NetworkConfig::mesh_port,
-#if STATION_ONLY 
-    WIFI_STA,
+#ifdef OBJ_ID
+  // Provisioning build (per-node env): seed the id into NVS over USB.
+  g_obj_id = OBJ_ID;
+  GeoIdentity::save(OBJ_ID);
+  // A USB flash bypasses the OTA bookkeeping; drop the stale installed-md5
+  // record so the next mesh OTA offer is not wrongly deduped.
+  if (LittleFS.begin(true)) LittleFS.remove("/ota_fw.json");
 #else
-    WIFI_AP_STA,
+  // Generic OTA image: identity comes from NVS only.
+  g_obj_id = GeoIdentity::load(-1);
 #endif
-    NetworkConfig::mesh_channel,
-    0, NetworkConfig::max_conn
-  );
+  ESP_LOGI(TAG, "Roto starting up, obj id %d, fw v%d", g_obj_id, FW_VERSION);
 
-  udp.begin(NetworkConfig::osc_from_ctl);
+  node.setIdentity(g_obj_id, g_obj_id == 0);
+  node.begin(NetworkConfig::ssid, NetworkConfig::password);
+  ota.begin();
 
   // Setup OSC receive handlers for misc params
   for (int i = 0; i < NUM_MISC; ++i) {
@@ -328,25 +324,30 @@ void setup() {
   snd_ping.init(broadcast_address);
   snd_reading.init(broadcast_address);
 
-#if SEQUENCER
-  sequencer.start();
-#endif
+  if (g_obj_id == 0) sequencer.start();
 }
 
 void loop() {
   runner.execute();
-  mesh.update();
-#if SEQUENCER
+  node.update();
+  ota.update();
   sequencer.update();
-#endif
-
-  osc_control_loop(udp, base_address, broadcast_address);
 
   sense();
   transport();
   midi_send();
   ping();
   send_info();
+
+  // Unprovisioned board (generic image, empty NVS): fast blink. It still joins
+  // the mesh and still takes OTA, it just ignores every id-addressed message.
+  if (g_obj_id < 0) {
+    static uint32_t blink = 0;
+    if (millis() - blink >= 150) {
+      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+      blink = millis();
+    }
+  }
 
 #if CORE_DEBUG_LEVEL > 0
   static uint32_t print_elapsed = millis();
@@ -446,7 +447,7 @@ void servo_osc_callback(OSCMessage& m) {
     ESP_LOGW(TAG, "Servo message with insufficient args");
     return;
   }
-  if (m.getFloat(0) != (float)OBJ_ID) {
+  if (m.getFloat(0) != (float)g_obj_id) {
     return;
   }
 
@@ -501,7 +502,7 @@ void rotation_osc_callback(OSCMessage& m) {
         ESP_LOGW(TAG, "Param message with insufficient args");
         return;
     }
-    if (m.getFloat(0) != (float)OBJ_ID) {
+    if (m.getFloat(0) != (float)g_obj_id) {
         // not global and not for this object
         return;
     }
@@ -545,7 +546,7 @@ void calibration_osc_callback(OSCMessage& m) {
     return;
   }
 
-  if (m.getFloat(0) != (float)OBJ_ID) {
+  if (m.getFloat(0) != (float)g_obj_id) {
     return;
   }
 
@@ -572,7 +573,7 @@ void misc_osc_callback(OSCMessage& msg) {
       ESP_LOGW(TAG, "Invalid misc message");
       return;
     }
-    if (msg.getFloat(0) != (float)OBJ_ID) {
+    if (msg.getFloat(0) != (float)g_obj_id) {
       return;
     }
   } else {
@@ -598,19 +599,26 @@ void ping() {
   last_time = millis();
   ESP_LOGD(TAG, "Ping broadcast");
 
-  snd_ping.m.add((float)OBJ_ID);
-  snd_ping.send(udp, IPAddress(255, 255, 255, 255), NetworkConfig::osc_info);
+  snd_ping.m.add((float)g_obj_id);
+  snd_ping.m.add((float)FW_VERSION);
+  node.send_info(snd_ping.m);
 }
 
 void send_info() {
+  // Every reading crosses the whole mesh, so don't chatter: skip the send while
+  // the sensor is sitting still.
+  const float READING_EPSILON = 0.005f;
   static uint32_t last_time = 0;
-  if (millis() - last_time < 400) return;
+  static float last_sent = -1;
+  if (millis() - last_time < READING_PERIOD) return;
+  if (fabsf(sensor_value_osc - last_sent) < READING_EPSILON) return;
   last_time = millis();
+  last_sent = sensor_value_osc;
 
-  snd_reading.m.add((float)OBJ_ID);
+  snd_reading.m.add((float)g_obj_id);
   snd_reading.m.add((float)sensor_value_osc);
 
-  snd_reading.send(udp, IPAddress(255, 255, 255, 255), NetworkConfig::osc_info);
+  node.send_info(snd_reading.m);
 }
 
 

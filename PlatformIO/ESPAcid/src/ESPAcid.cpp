@@ -19,24 +19,22 @@
 
 #include <Arduino.h>
 
-#include <painlessMesh.h>
 #include <MIDI.h>
-#include "osc_control.h"
 
-#include "NetworkConfig.h"
+#include "GeoNode.h"
+#include "GeoIdentity.h"
+#include "GeoOta.h"
 #include "GEOUtils.h"
 
 // ---- Constants ----
 
 static const char *TAG = "geo_acid";
 
-#ifndef OBJ_ID
-#define OBJ_ID 0
-#endif
+#define FW_VERSION 1
 
-#ifndef STATION_ONLY
-#define STATION_ONLY OBJ_ID!=0
-#endif
+// Object id at runtime: read from NVS by the generic OTA image, seeded over USB
+// by the per-node provisioning envs (-DOBJ_ID=n). -1 means unprovisioned.
+int g_obj_id = -1;
 
 #ifdef BOARD_OLIMEX
   #define RX_PIN 7
@@ -90,13 +88,15 @@ HardwareSerial MidiSerial(1);
 MIDI_CREATE_INSTANCE(HardwareSerial, MidiSerial, midi1);
 
 
-painlessMesh mesh;
-
 float osc_params[NUM_PARAMS] = {1, 0, 0, 0, 0, 0, 0, 0, 0, 1}; // piezo on, master max
 
-WiFiUDP udp;
 const char *base_address = "/toAcid";
 const char *broadcast_address = "/fromAcid";
+
+// Acid is never the mesh root anchor -- that is Roto object 0.
+GeoConfig geo_cfg{-1, false, base_address, broadcast_address, "acid"};
+GeoNode node(geo_cfg);
+GeoOta ota(node.mesh(), "acid");
 
 
 // ---- Function prototypes ----
@@ -110,27 +110,30 @@ void generic_param_callback(OSCMessage &msg);
 // ---- Function definitions ----
 
 void setup() {
+  pinMode(LED_BUILTIN, OUTPUT);
+
   MidiSerial.setPins(RX_PIN, TX_PIN);
   midi1.begin(MIDI_CHANNEL_OMNI);
 
   Serial.begin(115200);
   delay(1000);
 
-  ESP_LOGI(TAG, "Acid starting up, obj id %d", OBJ_ID);
-
-  // Mesh network init
-  mesh.init(
-    NetworkConfig::ssid, NetworkConfig::password, 
-    NetworkConfig::mesh_port, 
-#if STATION_ONLY 
-    WIFI_STA,
+#ifdef OBJ_ID
+  // Provisioning build (per-node env): seed the id into NVS over USB.
+  g_obj_id = OBJ_ID;
+  GeoIdentity::save(OBJ_ID);
+  // A USB flash bypasses the OTA bookkeeping; drop the stale installed-md5
+  // record so the next mesh OTA offer is not wrongly deduped.
+  if (LittleFS.begin(true)) LittleFS.remove("/ota_fw.json");
 #else
-    WIFI_AP_STA,
+  // Generic OTA image: identity comes from NVS only.
+  g_obj_id = GeoIdentity::load(-1);
 #endif
-    NetworkConfig::mesh_channel, 0, NetworkConfig::max_conn
-  );
+  ESP_LOGI(TAG, "Acid starting up, obj id %d, fw v%d", g_obj_id, FW_VERSION);
 
-  udp.begin(NetworkConfig::osc_from_ctl);
+  node.setIdentity(g_obj_id, /*is_root=*/false);
+  node.begin(NetworkConfig::ssid, NetworkConfig::password);
+  ota.begin();
 
   // Generate parameter names and create OSC objects
   for (int i = 0; i < NUM_PARAMS; ++i) {
@@ -142,10 +145,20 @@ void setup() {
 }
 
 void loop() {
-  mesh.update();
-  osc_control_loop(udp, base_address, broadcast_address);
+  node.update();
+  ota.update();
   midi_send();
   ping();
+
+  // Unprovisioned board (generic image, empty NVS): fast blink. It still joins
+  // the mesh and still takes OTA, it just ignores every id-addressed message.
+  if (g_obj_id < 0) {
+    static uint32_t blink = 0;
+    if (millis() - blink >= 150) {
+      digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+      blink = millis();
+    }
+  }
 }
 
 // ---- OSC Callbacks ----
@@ -160,7 +173,7 @@ void generic_param_callback(OSCMessage &msg) {
       ESP_LOGW(TAG, "Param message with insufficient args");
       return;
     }
-    if (msg.getFloat(0) != (float)OBJ_ID) {
+    if (msg.getFloat(0) != (float)g_obj_id) {
       return;
     }
   } else {
@@ -187,8 +200,9 @@ void ping() {
   last_time = millis();
   ESP_LOGD(TAG, "Ping broadcast");
 
-  snd_ping.m.add((float)OBJ_ID);
-  snd_ping.send(udp, IPAddress(255, 255, 255, 255), NetworkConfig::osc_info);
+  snd_ping.m.add((float)g_obj_id);
+  snd_ping.m.add((float)FW_VERSION);
+  node.send_info(snd_ping.m);
 }
 
 // ---- MIDI send ----

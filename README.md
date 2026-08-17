@@ -77,16 +77,39 @@ Generic parameters sent to Daisy Seed as MIDI CC 1-10
 ### Acid params
 `/toAcid/global/param[1-10] [value]` 
 
+#### Object alive, with firmware version:
+`/fromRoto/ping [obj_id] [fw_version]`, `/fromAcid/ping [obj_id] [fw_version]`
+
 # Network config
 
 Network parameters are defined in `NetworkConfig.h`
 
-SSID: `TrychtyrLOM`  
-Password: `LomLomLom`  
+SSID: `TrychtyrLOM`
+Password: `LomLomLom`
 
-Port for sending to mesh objects: `54345`  
-Port for listening to messages from mesh: `54355`  
+Port for sending to mesh objects: `54345`
+Port for listening to messages from mesh: `54355`
 
-#### (Deprecated)
-Access point IP: `192.168.0.201`  
-Port for sending OSC messages to AP (objects): `54350`  
+There is no infrastructure access point. Every object runs painlessMesh in
+AP_STA and advertises `TrychtyrLOM` as its own softAP, so **join any object's
+AP** and send to its gateway address (`10.x.y.1`). That object relays every
+`/to...` message it receives across the mesh, and re-emits telemetry it hears
+from the mesh to its own AP, so it does not matter which one you attach to.
+Roto and Acid share one mesh; Roto object 0 is the mesh root anchor.
+
+# Firmware
+
+Object ids live in NVS, not in the binary, so one image serves every object.
+
+1. **Provision** each board once over USB with its own env: `xiao_dev_0` ...
+   `xiao_dev_4` (in `ESPRoto/` or `ESPAcid/`). This writes the id and nothing
+   else depends on it afterwards.
+2. **Update** over the mesh: join any object's AP and run
+   `python PlatformIO/tools/ota_update.py --project roto --watch`
+   (`--project acid` for the Acid objects; the two roles cannot flash each
+   other, so run it once per project). It builds `xiao_deploy`, uploads to the
+   object's `/fw` endpoint, and that object distributes to the mesh and
+   self-flashes last. `http://10.x.y.1/` serves the same thing as a form.
+
+A crash-looping image can only be recovered over USB, so bench one board with
+`xiao_ota` before distributing.
