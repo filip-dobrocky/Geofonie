@@ -69,7 +69,7 @@
 					"numoutlets" : 1,
 					"outlettype" : [ "" ],
 					"patching_rect" : [ 997.25, 35.878174000000001, 118.0, 22.0 ],
-					"text" : "prepend /global/auto"
+					"text" : "prepend /toRoto/global/auto"
 				}
 
 			}

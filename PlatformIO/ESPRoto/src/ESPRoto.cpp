@@ -171,6 +171,8 @@ OSC_receive_msg rcv_global_min_distance("/global/calibration/minDist");
 OSC_receive_msg rcv_global_max_distance("/global/calibration/maxDist");
 OSC_receive_msg rcv_global_calibration_auto("/global/calibration/auto");
 
+OSC_receive_msg rcv_global_auto("/global/auto");
+
 OSC_send_msg snd_ping("/ping");
 OSC_send_msg snd_reading("/reading");
 OSC_send_msg snd_calibration("/calibration");
@@ -286,6 +288,7 @@ void servo_osc_callback(OSCMessage& m);
 void rotation_osc_callback(OSCMessage& m);
 void misc_osc_callback(OSCMessage& m);
 void calibration_osc_callback(OSCMessage& m);
+void auto_osc_callback(OSCMessage& m);
 
 
 // ---- Function definitions ----
@@ -384,6 +387,7 @@ void setup() {
   rcv_global_min_distance.init(calibration_osc_callback);
   rcv_global_max_distance.init(calibration_osc_callback);
   rcv_global_calibration_auto.init(calibration_osc_callback);
+  rcv_global_auto.init(auto_osc_callback);
 
   snd_ping.init(broadcast_address);
   snd_reading.init(broadcast_address);
@@ -820,6 +824,15 @@ void calibration_osc_callback(OSCMessage& m) {
   }
 }
 
+
+// Sequencer on/off. Only object 0 runs a sequencer; the others ignore it.
+void auto_osc_callback(OSCMessage& m) {
+  if (g_obj_id != 0 || m.size() < 1) return;
+  // Max sends the toggle as an int; getFloat() on a non-float returns -1 here.
+  float on = m.isFloat(0) ? m.getFloat(0) : (float)m.getInt(0);
+  ESP_LOGD(TAG, "Sequencer %s", on > 0 ? "on" : "off");
+  if (on > 0) sequencer.start(); else sequencer.stop();
+}
 
 void misc_osc_callback(OSCMessage& msg) {
   String addr = msg.getAddress();
