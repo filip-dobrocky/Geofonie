@@ -1,1 +1,4 @@
 *.wav
+.vscode/
+PlatformIO/ESPRoto/.vscode/
+PlatformIO/ESPAcid/.vscode/
