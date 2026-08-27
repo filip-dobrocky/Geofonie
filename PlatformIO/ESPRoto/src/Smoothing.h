@@ -5,7 +5,7 @@
 // ESPRoto.cpp -- raise that before this, integration is quieter per ms of
 // latency than filtering after the fact. Override with -DNUM_READINGS=n.
 #ifndef NUM_READINGS
-#define NUM_READINGS 4
+#define NUM_READINGS 5
 #endif
 
 // -DFILTER_MEDIAN swaps the moving average for a median: rejects VL53L4CD
