@@ -17,7 +17,7 @@ The ESP32 firmware is in the `PlatformIO` directory, the `Daisy` directory conta
     CC2: servo min angle / (sample pos) loop start pos
     CC3: servo max angle / (sample pos) loop end pos
     CC4: rotation speed  / (sample pos) loop speed
-    CC5..10: misc1..6
+    CC5..12: misc1..8
 
 
 # OSC messages:
@@ -68,8 +68,8 @@ Sent from object to all devices
 `/fromRoto/reading [obj_id] [value]`  
 
 ### Misc parameters:
-Sent to Daisy Seed as MIDI CC 5-10 to be used as sound synthesis parameters  
-`/toRoto/misc/[1-6] [obj_id] [value]`   
+Sent to Daisy Seed as MIDI CC 5-12 to be used as sound synthesis parameters  
+`/toRoto/misc/[1-8] [obj_id] [value]`   
 
 ## Acid objects
 
@@ -82,7 +82,7 @@ Generic parameters sent to Daisy Seed as MIDI CC 1-10
 ### Rotation direction
 `/toRoto/global/rotation/direction [value]`
 ### Roto misc
-`/toRoto/global/misc/[1-6] [value]` 
+`/toRoto/global/misc/[1-8] [value]` 
 ### Sensor calibration
 `/toRoto/global/calibration/minDist [value]`, `/toRoto/global/calibration/maxDist [value]`, `/toRoto/global/calibration/auto [value]`
 ### Acid params

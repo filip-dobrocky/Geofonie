@@ -92,7 +92,7 @@ int g_obj_id = -1;
 // Below this share of in-range samples the sensor is pointing past the object.
 #define CAL_MIN_VALID_PCT 50
 
-#define MISC_PARAM_NUM 6
+#define MISC_PARAM_NUM 8
 
 // Sensor telemetry period. Every reading is a mesh broadcast, so five objects at
 // 500 ms is already ~10 messages/s on a shared bus -- raise before lowering.
@@ -127,10 +127,12 @@ GeoOta ota(node.mesh(), "roto");
 // ---- Misc OSC params  ----
 constexpr int NUM_MISC = MISC_PARAM_NUM;
 constexpr const char* misc_param_names[NUM_MISC] = {
-  "/misc/1", "/misc/2", "/misc/3", "/misc/4", "/misc/5", "/misc/6"
+  "/misc/1", "/misc/2", "/misc/3", "/misc/4",
+  "/misc/5", "/misc/6", "/misc/7", "/misc/8"
 };
 constexpr const char* misc_param_names_global[NUM_MISC] = {
-  "/global/misc/1", "/global/misc/2", "/global/misc/3", "/global/misc/4", "/global/misc/5", "/global/misc/6"
+  "/global/misc/1", "/global/misc/2", "/global/misc/3", "/global/misc/4",
+  "/global/misc/5", "/global/misc/6", "/global/misc/7", "/global/misc/8"
 };
 OSC_receive_msg rcv_misc[NUM_MISC] = {
   OSC_receive_msg(misc_param_names[0]),
@@ -138,7 +140,9 @@ OSC_receive_msg rcv_misc[NUM_MISC] = {
   OSC_receive_msg(misc_param_names[2]),
   OSC_receive_msg(misc_param_names[3]),
   OSC_receive_msg(misc_param_names[4]),
-  OSC_receive_msg(misc_param_names[5])
+  OSC_receive_msg(misc_param_names[5]),
+  OSC_receive_msg(misc_param_names[6]),
+  OSC_receive_msg(misc_param_names[7])
 };
 
 OSC_receive_msg rcv_misc_global[NUM_MISC] = {
@@ -147,10 +151,14 @@ OSC_receive_msg rcv_misc_global[NUM_MISC] = {
   OSC_receive_msg(misc_param_names_global[2]),
   OSC_receive_msg(misc_param_names_global[3]),
   OSC_receive_msg(misc_param_names_global[4]),
-  OSC_receive_msg(misc_param_names_global[5])
+  OSC_receive_msg(misc_param_names_global[5]),
+  OSC_receive_msg(misc_param_names_global[6]),
+  OSC_receive_msg(misc_param_names_global[7])
 };
 
-float misc_osc[NUM_MISC] = {1.0f};
+// Defaults match the gen~ param defaults; the 1 s refresh would otherwise
+// overwrite them with zeros before anything sends a value.
+float misc_osc[NUM_MISC] = {1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.1875f, 0.1f};
 
 // ---- Named OSC params ----
 OSC_receive_msg rcv_rotation_speed("/rotation/speed");
