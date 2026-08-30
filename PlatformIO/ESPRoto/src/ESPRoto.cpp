@@ -101,7 +101,7 @@ int g_obj_id = -1;
 // Sensor integration window (10..200 ms). Longer = quieter, and cheaper than
 // averaging it back out in software. Trade against NUM_READINGS in Smoothing.h.
 #define SENSOR_TIMING_BUDGET 20
-// Poll margin: must stay above the budget or the blocking read() stalls loop().
+// Poll margin: keep it above the budget so sense() isn't polling I2C for nothing.
 #define SENSOR_PERIOD (SENSOR_TIMING_BUDGET + 4)
 
 #ifndef NO_SENSOR
@@ -447,14 +447,19 @@ void loop() {
 void sense() {
   static uint32_t last_time = 0;
   if (millis() - last_time < SENSOR_PERIOD) return;
-  last_time = millis();
 
 #if NO_SENSOR == 0
-  sensor.read();
+  // Never call the blocking read(): it spins on dataReady() for the whole 500 ms
+  // io_timeout, and loop() stalling that long stops MIDI, the mesh and the servo.
+  if (!sensor.dataReady()) return;
+  last_time = millis();
+
+  sensor.read(false);
   uint16_t raw_mm = sensor.ranging_data.range_mm;
   bool raw_valid = sensor.ranging_data.range_status == 0;
   sensor_value = sensor_filter.filter(raw_mm);
 #else
+  last_time = millis();
   sensor_value = (MIN_DISTANCE + MAX_DISTANCE) / 2;
   uint16_t raw_mm = sensor_value;
   bool raw_valid = true;
@@ -908,38 +913,33 @@ void send_info() {
 // === MIDI sending ===
 
 void midi_send() {
-  const uint8_t params_period = 60;       // change-poll rate for the slow params
-  const uint16_t refresh_period = 1000;   // full resend, so a late receiver syncs
+  // Everything goes out on a fixed schedule, one message per tick: at 31250 baud
+  // a CC is ~1 ms of wire time, and a burst of them is what makes a receiver's
+  // parser drop bytes. Nothing is gated on a value change either -- a CC the
+  // receiver missed is re-sent on the next pass instead of never.
+  const uint16_t sensor_period = 20;   // 50 Hz, the one value latency matters for
+  const uint16_t param_period = 10;    // round-robin: full sweep every ~110 ms
   const uint8_t NUM_PARAMS = 3 + MISC_PARAM_NUM;
-  static uint32_t params_time = 0;
-  static uint32_t refresh_time = 0;
-  static uint8_t last_sensor = 0xFF;
-  static uint8_t last_params[NUM_PARAMS] = {0};
+  static uint32_t sensor_time = 0;
+  static uint32_t param_time = 0;
+  static uint8_t cursor = 0;
 
-  // CC 1 - sensor value. Sent the moment sense() produces a new one; a timer
-  // here would only add latency to the one value that can least afford it.
-  if (sensor_midi != last_sensor) {
+  const uint32_t now = millis();
+
+  // CC 1 - sensor value
+  if (now - sensor_time >= sensor_period) {
+    sensor_time = now;
     midi1.sendControlChange(1, sensor_midi, 1);
-    last_sensor = sensor_midi;
   }
-
-  if (millis() - params_time < params_period) return;
-  params_time = millis();
-
-  // At 31250 baud each CC costs ~1 ms of wire time, so resending nine unchanged
-  // params every tick would sit in front of the sensor value.
-  const bool refresh = millis() - refresh_time >= refresh_period;
-  if (refresh) refresh_time = millis();
 
   // CC 2 - loop start, CC 3 - loop end, CC 4 - speed, CC 5... - misc
-  uint8_t params[NUM_PARAMS] = {start_pos_midi, end_pos_midi, speed_midi};
-  for (int i = 0; i < MISC_PARAM_NUM; i++) {
-    params[3 + i] = misc_midi[i];
-  }
-
-  for (int i = 0; i < NUM_PARAMS; i++) {
-    if (!refresh && params[i] == last_params[i]) continue;
-    midi1.sendControlChange(2 + i, params[i], 1);
-    last_params[i] = params[i];
+  if (now - param_time >= param_period) {
+    param_time = now;
+    uint8_t params[NUM_PARAMS] = {start_pos_midi, end_pos_midi, speed_midi};
+    for (int i = 0; i < MISC_PARAM_NUM; i++) {
+      params[3 + i] = misc_midi[i];
+    }
+    midi1.sendControlChange(2 + cursor, params[cursor], 1);
+    if (++cursor >= NUM_PARAMS) cursor = 0;
   }
 }
