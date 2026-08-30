@@ -436,6 +436,10 @@ void loop() {
     print_elapsed = millis();
   }
 #endif
+
+  // loop() shares core 0 with the idle task the WDT watches; without a yield it
+  // never runs and the panic fires after 5 s.
+  delay(1);
 }
 
 // ---- Function definitions ----
