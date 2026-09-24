@@ -75,20 +75,29 @@ int g_obj_id = -1;
 #define DEGREES_PER_ROTATION 10
 
 // ---- Auto-calibration ----
-// Scans the object once per boot: the servo is held still for a full rotation at
-// each angle, so only one axis moves at a time. Tuning knobs for a physical rig.
+// Runs once per boot. Default: the servo stays at center_angle while the stepper
+// turns CAL_TURNS times, and only the distance band is set. -DFULL_CALIBRATION
+// instead holds the servo for a full rotation at each angle across the range and
+// also derives the servo band (center/angle) from where the object is.
 // Upper bound, not a haste setting: a rotation takes STEPS_PER_ROTATION/CAL_SPEED
 // seconds and samples every SENSOR_PERIOD, so faster thins the azimuthal scan
 // (4000 -> 3.4 s -> ~140 samples/rotation -> one every 2.6 degrees).
 #define CAL_SPEED 4000
+#ifdef FULL_CALIBRATION
 #define CAL_ANGLE_STEP 4
 #define CAL_ANGLE_COUNT (((MAX_ANGLE - MIN_ANGLE) / CAL_ANGLE_STEP) + 1)
-// Servo travel between two adjacent stops.
+#define CAL_TURNS 1
+#else
+#define CAL_ANGLE_COUNT 1
+#define CAL_TURNS 2
+#endif
+// Servo travel between two adjacent stops; also lets the stepper reach speed.
 #define CAL_SETTLE_MS 200
 // Below this span across a rotation an angle is the pedestal, not the object.
 #define CAL_FLAT_SPAN_MM 8
-// Widens the measured window so the extremes don't sit exactly on 0 and 127.
-#define CAL_MARGIN_MM 5
+// Widens the measured window on each edge by this share of its span, so the
+// extremes don't sit exactly on 0 and 127.
+#define CAL_PAD_PCT 10
 // Below this share of in-range samples the sensor is pointing past the object.
 #define CAL_MIN_VALID_PCT 50
 
@@ -481,7 +490,11 @@ void sense() {
 
 // === Auto-calibration ===
 
+#ifdef FULL_CALIBRATION
 static inline int cal_angle(uint8_t i) { return MIN_ANGLE + i * CAL_ANGLE_STEP; }
+#else
+static inline int cal_angle(uint8_t) { return center_angle; }
+#endif
 
 void start_calibration() {
   if (cal_phase != CAL_OFF) return;
@@ -505,7 +518,7 @@ void start_calibration() {
   cal_settle_until = millis() + CAL_SETTLE_MS;
   cal_phase = CAL_SETTLE;
   cal_deadline = millis() + 2UL * CAL_ANGLE_COUNT *
-                 ((1000UL * STEPS_PER_ROTATION) / CAL_SPEED + CAL_SETTLE_MS);
+                 ((1000UL * CAL_TURNS * STEPS_PER_ROTATION) / CAL_SPEED + CAL_SETTLE_MS);
 
   ESP_LOGI(TAG, "Calibration started, %d angles from %d to %d deg",
            CAL_ANGLE_COUNT, cal_angle(0), cal_angle(CAL_ANGLE_COUNT - 1));
@@ -548,7 +561,7 @@ void update_calibration(uint16_t raw_mm, bool raw_valid) {
 
   // Read once: abs() is a macro and would poll the stepper service twice
   const int32_t turned = stepper.getCurrentPositionInSteps() - cal_start_steps;
-  if (abs(turned) < STEPS_PER_ROTATION) return;
+  if (abs(turned) < CAL_TURNS * STEPS_PER_ROTATION) return;
 
   ESP_LOGD(TAG, "Calibration angle %d: %d..%d mm, %d/%d valid",
            cal_angle(cal_index), row.min_mm, row.max_mm, row.valid, row.total);
@@ -574,9 +587,10 @@ void finish_calibration(bool completed) {
   // already fills in: sky returns no signal whatever the object's shape.
   for (int i = 0; completed && i < CAL_ANGLE_COUNT; ++i) {
     const CalRow &r = cal_rows[i];
-    const bool object = r.total > 0 &&
-                        r.valid * 100 >= r.total * CAL_MIN_VALID_PCT &&   // else sky
-                        (r.max_mm - r.min_mm) >= CAL_FLAT_SPAN_MM;        // else pedestal
+    bool object = r.total > 0 && r.valid * 100 >= r.total * CAL_MIN_VALID_PCT;   // else sky
+#ifdef FULL_CALIBRATION
+    object = object && (r.max_mm - r.min_mm) >= CAL_FLAT_SPAN_MM;               // else pedestal
+#endif
     if (!object) {
       run_start = -1;
       continue;
@@ -591,17 +605,21 @@ void finish_calibration(bool completed) {
       if (cal_rows[i].min_mm < min_mm) min_mm = cal_rows[i].min_mm;
       if (cal_rows[i].max_mm > max_mm) max_mm = cal_rows[i].max_mm;
     }
-    const int lo_mm = constrain((int)min_mm - CAL_MARGIN_MM, MIN_DISTANCE, MAX_DISTANCE - 1);
-    const int hi_mm = constrain((int)max_mm + CAL_MARGIN_MM, lo_mm + 1, MAX_DISTANCE);
+    const int pad = (max_mm - min_mm) * CAL_PAD_PCT / 100;
+    const int lo_mm = constrain((int)min_mm - pad, MIN_DISTANCE, MAX_DISTANCE - 1);
+    const int hi_mm = constrain((int)max_mm + pad, lo_mm + 1, MAX_DISTANCE);
     min_distance_osc = (float)(lo_mm - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE);
     max_distance_osc = (float)(hi_mm - MIN_DISTANCE) / (MAX_DISTANCE - MIN_DISTANCE);
 
+#ifdef FULL_CALIBRATION
     const int lo_ang = cal_angle(best_start);
     const int hi_ang = cal_angle(best_start + best_len - 1);
     center_angle = (lo_ang + hi_ang) / 2;
     angle_dif = (hi_ang - lo_ang) / 2;
+#endif
 
-    ESP_LOGI(TAG, "Calibration done: %d..%d mm, angles %d..%d", lo_mm, hi_mm, lo_ang, hi_ang);
+    ESP_LOGI(TAG, "Calibration done: %d..%d mm, angles %d..%d",
+             lo_mm, hi_mm, center_angle - angle_dif, center_angle + angle_dif);
   } else {
     ESP_LOGW(TAG, "Calibration found no object band, keeping previous values");
   }
