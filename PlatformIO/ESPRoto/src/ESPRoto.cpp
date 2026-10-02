@@ -37,7 +37,7 @@
 // Constants
 const char* TAG = "geo_roto";
 
-#define FW_VERSION 1
+#define FW_VERSION 2
 
 // Object id at runtime: read from NVS by the generic OTA image, seeded over USB
 // by the per-node provisioning envs (-DOBJ_ID=n). -1 means unprovisioned.

@@ -16,20 +16,29 @@ workflows:
       - flutter build macos --release
       - name: Sign with Developer ID
         script: |
+          set -e
           keychain initialize
           echo "$CM_CERTIFICATE" | base64 --decode > /tmp/devid.p12
           keychain add-certificates --certificate /tmp/devid.p12 --certificate-password "$CM_CERTIFICATE_PASSWORD"
+          # The build machine lacks the Developer ID intermediate, so the chain to Apple's root can't be built.
+          curl -fsSL -o /tmp/DeveloperIDG2CA.cer https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer
+          security add-certificates /tmp/DeveloperIDG2CA.cer
           APP=build/macos/Build/Products/Release/geo_controller.app
           ID="Developer ID Application"
           # Inside-out: nested frameworks first, then the app with its sandbox entitlements.
-          find "$APP/Contents/Frameworks" -maxdepth 1 \( -name "*.framework" -o -name "*.dylib" \) \
-            -exec codesign --force --timestamp --options runtime -s "$ID" {} \;
+          for f in "$APP"/Contents/Frameworks/*.framework "$APP"/Contents/Frameworks/*.dylib; do
+            [ -e "$f" ] && codesign --force --timestamp --options runtime -s "$ID" "$f"
+          done
           codesign --force --timestamp --options runtime --entitlements macos/Runner/Release.entitlements -s "$ID" "$APP"
           codesign --verify --strict --verbose=2 "$APP"
+          codesign -dv "$APP" 2>&1 | grep "Authority=Developer ID Application"
       - name: Notarize
         script: |
+          set -e
           APP=build/macos/Build/Products/Release/geo_controller.app
-          echo "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/AuthKey.p8
+          # Rebuild the PEM: pasted secrets often lose their line breaks.
+          BODY=$(echo "$APP_STORE_CONNECT_PRIVATE_KEY" | sed 's/-----[A-Z ]*-----//g' | tr -d ' \r\n\t"')
+          printf -- "-----BEGIN PRIVATE KEY-----\n%s\n-----END PRIVATE KEY-----\n" "$(echo "$BODY" | fold -w 64)" > /tmp/AuthKey.p8
           ditto -c -k --keepParent "$APP" /tmp/notarize.zip
           xcrun notarytool submit /tmp/notarize.zip --wait \
             --key /tmp/AuthKey.p8 --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" --issuer "$APP_STORE_CONNECT_ISSUER_ID"
