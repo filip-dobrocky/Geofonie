@@ -62,95 +62,118 @@ namespace Score {
     };
     
     // Define message arrays separately
-    // misc: 2 brightness, 3 engine (0 granular / 0.5 sine+FM / 1 reso), 4 root,
-    //       5 scale, 6 reso fb (0.5 off), 7 FM ratio (x8, min 1), 8 FM index
-    // speed: v*4000 steps/s, 13500 steps/rot -> 0.1 ~ 34 s/rot, 0.2 ~ 17 s/rot
+    // misc: 2 brightness, 3 engine (0 granular+reso / 0.5 FM drone / 1 FM pluck),
+    //       4 root, 5 scale, 6 reso fb (0 = -fb, 0.5 = clean, 1 = +fb),
+    //       7 FM ratio (x8, min 1), 8 FM index
+    // Messages loop within a state; states last < 1 min.
 
-    // granular, synced -> dephasing -> resync
+    // resonant granular
     const Message state0_msgs[] PROGMEM = {
     {"/toRoto/global/misc/3", -1, CONST(0.0f), 100}, // engine 0
-    {"/toRoto/global/misc/6", -1, CONST(0.5f), 100}, // reso off
-    {"/toRoto/global/misc/8", -1, CONST(0.0f), 100}, // FM index 0
+    {"/toRoto/global/misc/6", -1, RANDF_RANGE(0.9f, 1.0f), 100}, // reso strong +fb
     {"/toRoto/global/misc/2", -1, CONST(0.9f), 100}, // brightness manual high
     {"/toRoto/misc/4", 0, CONST(0.164f), 100}, // root
-    {"/toRoto/misc/4", 2, CONST(0.164f + I_OCTAVE), 100}, // root
-    {"/toRoto/misc/4", 4, CONST(0.164f), 100}, // root
+    {"/toRoto/misc/4", 2, CONST(0.164f + I_PERFECT5TH), 100}, // root
+    {"/toRoto/misc/4", 4, CONST(0.164f + I_MAJOR7TH), 100}, // root
     {"/toRoto/global/misc/5", -1, CONST(0.4f), 100}, // scale
-    {"/toRoto/global/rotation/direction", -1, RAND_DIR(), 2500},
-    {"/toRoto/global/rotation/speed", -1, CONST(0.15f), 15000}, // sync
-    {"/toRoto/rotation/speed", 2, CONST(0.156f), 100}, // dephase
-    {"/toRoto/rotation/speed", 4, CONST(0.162f), 12000},
-    {"/toRoto/rotation/speed", 2, CONST(0.162f), 100}, // further apart
-    {"/toRoto/rotation/speed", 4, CONST(0.174f), 15000},
-    {"/toRoto/rotation/speed", 2, CONST(0.165f), 100},
-    {"/toRoto/rotation/speed", 4, CONST(0.18f), 12000},
-    {"/toRoto/global/rotation/speed", -1, CONST(0.15f), 15000}, // resync
+    {"/toRoto/global/rotation/direction", -1, RAND_DIR(), 100},
+    {"/toRoto/global/rotation/speed", -1, RANDF_RANGE(0.03f, 0.1f), 4000},
+    {"/toRoto/rotation/speed", 0, RANDF_RANGE(0.05f, 0.2f), 3000}, // desync
+    {"/toRoto/rotation/speed", 2, RANDF_RANGE(0.05f, 0.2f), 3000},
+    {"/toRoto/global/misc/6", -1, CONST(1.0f), 4000}, // reso max
+    {"/toRoto/global/rotation/speed", -1, CONST(0.0f), 4000}, // stop
+    {"/toRoto/rotation/speed", 4, RANDF_RANGE(0.1f, 0.3f), 4000},
     };
 
-    // granular + resonator swell tuned to intervals, one device briefly on engine 1
+    // sine drone, mostly pure, slow dephasing
     const Message state1_msgs[] PROGMEM = {
-    {"/toRoto/global/misc/3", -1, CONST(0.0f), 100}, // engine 0
-    {"/toRoto/global/misc/8", -1, CONST(0.0f), 100}, // FM index 0
-    {"/toRoto/global/misc/2", -1, CONST(0.2f), 100}, // brightness auto lower
-    {"/toRoto/misc/4", 0, CONST(0.164f), 100}, // root
-    {"/toRoto/misc/4", 2, CONST(0.164f + I_PERFECT5TH), 100}, // fifth
-    {"/toRoto/misc/4", 4, CONST(0.164f + I_OCTAVE), 100}, // octave
+    {"/toRoto/global/misc/3", -1, CONST(0.5f), 100}, // engine 1
+    {"/toRoto/global/misc/2", -1, CONST(0.3f), 100}, // brightness auto
+    {"/toRoto/global/misc/7", -1, CONST(0.125f), 100}, // FM ratio 1:1
+    {"/toRoto/global/misc/8", -1, CONST(0.0f), 100}, // FM index 0 = pure sine
+    {"/toRoto/misc/4", 0, CONST(0.164f + I_OCTAVE), 100}, // root
+    {"/toRoto/misc/4", 2, CONST(0.164f + I_OCTAVE + I_PERFECT4TH), 100}, // root
+    {"/toRoto/misc/4", 4, CONST(0.164f + I_PERFECT5TH), 100}, // root
     {"/toRoto/global/misc/5", -1, CONST(0.428f), 100}, // scale
-    {"/toRoto/global/misc/6", -1, CONST(0.5f), 100}, // reso off
-    {"/toRoto/rotation/speed", 0, CONST(0.12f), 100}, // slow dephase
-    {"/toRoto/rotation/speed", 2, CONST(0.123f), 100},
-    {"/toRoto/rotation/speed", 4, CONST(0.127f), 6000},
-    {"/toRoto/global/misc/6", -1, CONST(0.68f), 8000}, // reso swell
-    {"/toRoto/global/misc/6", -1, CONST(0.8f), 8000},
-    {"/toRoto/misc/3", 4, CONST(1.0f), 10000}, // engine 1 on device 4
-    {"/toRoto/misc/3", 4, CONST(0.0f), 100}, // back to granular
-    {"/toRoto/global/misc/6", -1, CONST(0.68f), 6000},
-    {"/toRoto/global/misc/6", -1, CONST(0.3f), 4000}, // negative fb dip
-    {"/toRoto/global/misc/6", -1, CONST(0.5f), 10000}, // reso off
+    {"/toRoto/global/rotation/speed", -1, CONST(0.12f), 12000}, // sync
+    {"/toRoto/rotation/speed", 2, CONST(0.124f), 100}, // dephase
+    {"/toRoto/rotation/speed", 4, CONST(0.129f), 15000},
+    {"/toRoto/global/misc/8", -1, CONST(0.06f), 6000}, // touch of FM
+    {"/toRoto/global/misc/8", -1, CONST(0.0f), 100}, // pure again
+    {"/toRoto/global/rotation/speed", -1, CONST(0.12f), 15000}, // resync
     };
 
-    // granular, speeds at 2:3:4 so rotations realign; brief dephase, snap back
+    // FM pluck, fast
     const Message state2_msgs[] PROGMEM = {
-    {"/toRoto/global/misc/3", -1, CONST(0.0f), 100}, // engine 0
-    {"/toRoto/global/misc/8", -1, CONST(0.0f), 100}, // FM index 0
-    {"/toRoto/global/misc/6", -1, CONST(0.5f), 100}, // reso off
+    {"/toRoto/global/misc/3", -1, CONST(1.0f), 100}, // engine 2
     {"/toRoto/global/misc/2", -1, CONST(0.4f), 100}, // brightness auto higher
-    {"/toRoto/misc/4", 0, CONST(0.264f), 100}, // root
-    {"/toRoto/misc/4", 2, CONST(0.264f + I_MAJOR3RD), 100}, // major 3rd
-    {"/toRoto/misc/4", 4, CONST(0.264f + I_MAJOR7TH), 100}, // major 7th
-    {"/toRoto/global/misc/5", -1, CONST(0.428f), 100}, // scale
-    {"/toRoto/rotation/speed", 0, CONST(0.1f), 100}, // 2
-    {"/toRoto/rotation/speed", 2, CONST(0.15f), 100}, // 3
-    {"/toRoto/rotation/speed", 4, CONST(0.2f), 25000}, // 4
-    {"/toRoto/rotation/speed", 2, CONST(0.1545f), 12000}, // +3% dephase
-    {"/toRoto/global/misc/6", -1, CONST(0.62f), 6000}, // mild reso
-    {"/toRoto/global/misc/6", -1, CONST(0.5f), 100}, // reso off
-    {"/toRoto/rotation/speed", 2, CONST(0.15f), 15000}, // snap back to ratio
+    {"/toRoto/global/misc/7", -1, CONST(0.1875f), 100}, // FM ratio 1.5:1
+    {"/toRoto/global/misc/5", -1, CONST(0.0f), 100}, // scale
+    {"/toRoto/global/rotation/speed", -1, RANDF_RANGE(0.3f, 0.8f), 2000},
+    {"/toRoto/global/misc/8", -1, RANDF_RANGE(0.05f, 0.25f), 100}, // FM index
+    {"/toRoto/global/rotation/speed", -1, RANDF_RANGE(0.1f, 0.8f), 1500},
+    {"/toRoto/global/rotation/speed", -1, RANDF_RANGE(0.1f, 0.8f), 1500},
+    {"/toRoto/global/misc/7", -1, RANDF_RANGE(0.125f, 0.5f), 100}, // FM ratio random
+    {"/toRoto/global/rotation/direction", -1, RAND_DIR(), 1500},
+    {"/toRoto/global/rotation/speed", -1, CONST(0.0f), 2500}, // stop
+    {"/toRoto/global/rotation/speed", -1, RANDF_RANGE(0.05f, 0.75f), 1000},
+    {"/toRoto/global/misc/8", -1, RANDF_RANGE(0.2f, 0.4f), 100}, // FM index up
+    {"/toRoto/global/rotation/speed", -1, RANDF_RANGE(0.1f, 0.8f), 1500},
+    {"/toRoto/global/rotation/speed", -1, CONST(0.0f), 4000}, // stop
     };
 
-    // rare short FM episode at the low/high extremes, low end handed to engine 1
+    // negative-feedback resonator, hollow
     const Message state3_msgs[] PROGMEM = {
-    {"/toRoto/global/misc/3", -1, CONST(0.5f), 100}, // engine sine/FM
-    {"/toRoto/global/misc/6", -1, CONST(0.5f), 100}, // reso off
-    {"/toRoto/global/misc/7", -1, CONST(0.25f), 100}, // FM ratio 2:1
-    {"/toRoto/global/misc/8", -1, RANDF_RANGE(0.1f, 0.3f), 100}, // FM index low
-    {"/toRoto/misc/4", 0, CONST(0.03f), 100}, // root low
-    {"/toRoto/misc/4", 2, CONST(0.85f), 100}, // root high
-    {"/toRoto/misc/4", 4, CONST(0.85f + I_PERFECT5TH), 100}, // root high + 5th
-    {"/toRoto/global/rotation/speed", -1, CONST(0.2f), 10000}, // sync
-    {"/toRoto/misc/3", 0, CONST(1.0f), 10000}, // engine 1 on the low device
+    {"/toRoto/global/misc/3", -1, CONST(0.0f), 100}, // engine 0
+    {"/toRoto/global/misc/6", -1, RANDF_RANGE(0.0f, 0.1f), 100}, // reso strong -fb
+    {"/toRoto/global/misc/2", -1, CONST(0.3f), 100}, // brightness auto
+    {"/toRoto/misc/4", 0, CONST(0.264f), 100}, // root
+    {"/toRoto/misc/4", 2, CONST(0.264f + I_MAJOR3RD), 100}, // root
+    {"/toRoto/misc/4", 4, CONST(0.264f + I_MAJOR7TH), 100}, // root
+    {"/toRoto/global/misc/5", -1, CONST(0.428f), 100}, // scale
+    {"/toRoto/rotation/speed", 0, RANDF_RANGE(0.4f, 0.8f), 1500},
+    {"/toRoto/rotation/speed", 2, RANDF_RANGE(0.4f, 0.8f), 1500},
+    {"/toRoto/rotation/speed", 4, RANDF_RANGE(0.4f, 0.8f), 1500},
+    {"/toRoto/rotation/direction", 0, RAND_DIR(), 2000},
+    {"/toRoto/rotation/direction", 2, RAND_DIR(), 2000},
+    {"/toRoto/rotation/direction", 4, RAND_DIR(), 2000},
+    {"/toRoto/global/rotation/speed", -1, CONST(0.0f), 4000}, // stop
+    {"/toRoto/global/misc/6", -1, RANDF_RANGE(0.9f, 1.0f), 4000}, // flip to +fb
+    };
+
+    // engine split across devices
+    const Message state4_msgs[] PROGMEM = {
+    {"/toRoto/misc/3", 0, CONST(0.5f), 100}, // FM drone
+    {"/toRoto/misc/3", 2, CONST(1.0f), 100}, // FM pluck
+    {"/toRoto/misc/3", 4, CONST(0.0f), 100}, // reso granular
+    {"/toRoto/global/misc/6", -1, CONST(0.95f), 100}, // reso strong
+    {"/toRoto/global/misc/7", -1, RANDF_RANGE(0.125f, 0.375f), 100}, // FM ratio
+    {"/toRoto/global/misc/8", -1, RANDF_RANGE(0.0f, 0.2f), 100}, // FM index
+    {"/toRoto/misc/4", 0, CONST(0.164f + I_PERFECT5TH), 100}, // root
+    {"/toRoto/misc/4", 2, CONST(0.164f + I_PERFECT5TH + I_MAJOR3RD), 100}, // root
+    {"/toRoto/misc/4", 4, CONST(0.164f + I_PERFECT5TH + I_MAJOR7TH), 100}, // root
+    {"/toRoto/rotation/speed", 0, RANDF_RANGE(0.05f, 0.3f), 3000},
+    {"/toRoto/rotation/speed", 2, RANDF_RANGE(0.3f, 0.8f), 3000},
+    {"/toRoto/rotation/speed", 4, RANDF_RANGE(0.05f, 0.2f), 3000},
+    {"/toRoto/misc/3", 0, CONST(1.0f), 100}, // rotate engines
+    {"/toRoto/misc/3", 2, CONST(0.5f), 4000},
+    {"/toRoto/global/rotation/speed", -1, CONST(0.0f), 4000}, // stop
+    {"/toRoto/global/misc/8", -1, RANDF_RANGE(0.0f, 0.3f), 3000}, // FM index random
     };
 
     // Define next_states arrays separately (repeats = weight)
-    const uint8_t state0_next[] PROGMEM = {1, 2, 2, 1, 3};
-    const uint8_t state1_next[] PROGMEM = {0, 2, 0};
-    const uint8_t state2_next[] PROGMEM = {0, 1, 1, 3};
-    const uint8_t state3_next[] PROGMEM = {0, 2};
+    // priority: granular (0, 3) > sine (1) > FM pluck (2) > long FM (4)
+    const uint8_t state0_next[] PROGMEM = {3, 3, 3, 1, 1, 2};
+    const uint8_t state1_next[] PROGMEM = {0, 0, 3, 3, 2, 4};
+    const uint8_t state2_next[] PROGMEM = {0, 3, 1};
+    const uint8_t state3_next[] PROGMEM = {0, 0, 0, 1, 1, 2};
+    const uint8_t state4_next[] PROGMEM = {0, 3};
 
     const State score[] PROGMEM = {
-    {0, state0_msgs, COUNT_OF(state0_msgs), state0_next, COUNT_OF(state0_next), 70000, true},
-    {1, state1_msgs, COUNT_OF(state1_msgs), state1_next, COUNT_OF(state1_next), 55000, true},
-    {2, state2_msgs, COUNT_OF(state2_msgs), state2_next, COUNT_OF(state2_next), 60000, true},
-    {3, state3_msgs, COUNT_OF(state3_msgs), state3_next, COUNT_OF(state3_next), 20000, true},
+    {0, state0_msgs, COUNT_OF(state0_msgs), state0_next, COUNT_OF(state0_next), 60000, true},
+    {1, state1_msgs, COUNT_OF(state1_msgs), state1_next, COUNT_OF(state1_next), 40000, true},
+    {2, state2_msgs, COUNT_OF(state2_msgs), state2_next, COUNT_OF(state2_next), 25000, true},
+    {3, state3_msgs, COUNT_OF(state3_msgs), state3_next, COUNT_OF(state3_next), 55000, true},
+    {4, state4_msgs, COUNT_OF(state4_msgs), state4_next, COUNT_OF(state4_next), 25000, true},
     };
 }
