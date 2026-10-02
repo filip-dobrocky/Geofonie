@@ -651,6 +651,7 @@ void finish_calibration(bool completed) {
 }
 
 void stepper_start(int dir) {
+  t_disable_stepper.disable(); // a stop <1 s ago would otherwise cut the driver mid-run
   digitalWrite(EN_PIN, LOW);
   stepper.startJogging(dir);
   ESP_LOGD(TAG, "Stepper started with speed %d", stepper_speed);
@@ -669,6 +670,7 @@ void stepper_stop() {
 
 
 void start_stepper_after_direction_change() {
+    if (stepper_speed == 0) return; // speed went to 0 during the pause
     stepper_start(pending_rotation_direction);
     ESP_LOGD(TAG, "Stepper started after direction change (TaskScheduler)");
 }
