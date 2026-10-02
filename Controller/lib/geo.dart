@@ -124,32 +124,25 @@ class Geo extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Like Max: a global control moves every node's control too. SPEED fans out
-  // per node (each adds its own fine offset); the rest goes as one /global/
-  // packet and the node values follow silently.
+  // Like Max: a global control goes as one /global/ packet and every node's
+  // control follows silently. One packet can't carry per-node fine offsets,
+  // so a global SPEED/fine move zeroes them.
   void _setGlobal(Param p, double v) {
     _values['${p.path} -1'] = v;
-    if (p == speed || p == fine) {
-      final s = get(speed, -1) + get(fine, -1);
-      for (final id in nodeIds) {
-        _values['${speed.path} $id'] = s;
-        _mark(speed, id);
-      }
-    } else {
-      for (final id in nodeIds) {
-        _values['${p.path} $id'] = v;
-        _lastSent['${p.path} $id'] = v;
-      }
-      _mark(p, -1);
+    final q = p == fine ? speed : p;
+    final s = out(q, -1);
+    for (final id in nodeIds) {
+      if (q == speed) _values['${fine.path} $id'] = 0;
+      _values['${q.path} $id'] = s;
+      _lastSent['${q.path} $id'] = s;
     }
+    _mark(q, -1);
     notifyListeners();
   }
 
   /// SPEED 0 everywhere, fine offsets included (else nodes keep creeping).
   void stop() {
-    for (final id in [-1, ...nodeIds]) {
-      _values['${fine.path} $id'] = 0;
-    }
+    _values['${fine.path} -1'] = 0;
     _setGlobal(speed, 0);
   }
 

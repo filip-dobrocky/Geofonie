@@ -21,19 +21,20 @@ void main() {
 
     geo.set(misc[0], -1, 0.5); // global VOL: one packet
     geo.set(fine, 2, 0.05);
-    geo.set(speed, -1, 0.25); // fans out per node, node 2 adds its fine
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    geo.set(fine, -1, 0.01);
+    geo.set(speed, -1, 0.25); // one /global/ packet, node fines zeroed
     await Future<void>.delayed(const Duration(milliseconds: 300));
     expect(got.where((m) => m.$1 == '/toRoto/global/misc/1').single.$2.single,
         closeTo(0.5, 1e-6));
     expect(got.where((m) => m.$1.contains('misc/1') && m.$2.length == 2), isEmpty);
     expect(geo.get(misc[0], 3), 0.5);
-    final speeds = {
-      for (final m in got.where((m) => m.$1 == '/toRoto/rotation/speed'))
-        (m.$2[0] as double).round(): m.$2[1] as double
-    };
-    expect(speeds.keys, unorderedEquals(nodeIds));
-    expect(speeds[2], closeTo(0.3, 1e-6));
-    expect(speeds[0], closeTo(0.25, 1e-6));
+    expect(got.where((m) => m.$1 == '/toRoto/global/rotation/speed').last.$2.single,
+        closeTo(0.26, 1e-6));
+    // Only node 2's own fine move went out per node, before the global one.
+    expect(got.where((m) => m.$1 == '/toRoto/rotation/speed').single.$2[0], 2.0);
+    expect(geo.get(fine, 2), 0);
+    expect(geo.out(speed, 3), closeTo(0.26, 1e-6));
 
     // Ramp: a 400 ms glide sends intermediate values before landing.
     got.clear();
