@@ -150,7 +150,7 @@ inline t_sample safemod(t_sample f, t_sample m) {
 		if (f>=m) {
 			if (f>=(m*2.)) {
 				t_sample d = f / m;
-				d = d - (long) d;
+				d = d - (int64_t) d;
 				f = d * m;
 			}
 			else {
@@ -160,7 +160,7 @@ inline t_sample safemod(t_sample f, t_sample m) {
 		else if (f<=(-m)) {
 			if (f<=(-m*2.)) {
 				t_sample d = f / m;
-				d = d - (long) d;
+				d = d - (int64_t) d;
 				f = d * m;
 			}
 			 else {
@@ -229,14 +229,14 @@ inline t_sample fold(t_sample v, t_sample lo1, t_sample hi1){
 	if(v >= hi){
 		v -= range;
 		if(v >= hi){
-			numWraps = (long)((v - lo)/range);
+			numWraps = (int64_t)((v - lo)/range);
 			v -= range * (t_sample)numWraps;
 		}
 		numWraps++;
 	} else if(v < lo){
 		v += range;
 		if(v < lo){
-			numWraps = (long)((v - lo)/range) - 1;
+			numWraps = (int64_t)((v - lo)/range) - 1;
 			v -= range * (t_sample)numWraps;
 		}
 		numWraps--;
@@ -257,7 +257,7 @@ inline t_sample wrap(t_sample v, t_sample lo1, t_sample hi1){
 	const t_sample range = hi - lo;
 	if (v >= lo && v < hi) return v;
 	if (range <= 0.000000001) return lo;	// no point...
-	const long numWraps = long((v-lo)/range) - (v < lo);
+	const int64_t numWraps = int64_t((v-lo)/range) - (v < lo);
 	const t_sample result = v - range * t_sample(numWraps);
 	if (result >= hi) return result - range;
 	else return result;
