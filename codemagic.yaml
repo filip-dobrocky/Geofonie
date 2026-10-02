@@ -7,8 +7,31 @@ workflows:
     environment:
       flutter: stable
       xcode: latest
+      # CM_CERTIFICATE (base64 Developer ID .p12), CM_CERTIFICATE_PASSWORD,
+      # APP_STORE_CONNECT_PRIVATE_KEY (.p8 contents), APP_STORE_CONNECT_KEY_IDENTIFIER, APP_STORE_CONNECT_ISSUER_ID
+      groups:
+        - apple
     scripts:
       - flutter pub get
       - flutter build macos --release
-      # ponytail: unsigned build — first launch needs right-click > Open. Add code signing + notarization if it's ever distributed.
-      - ditto -c -k --keepParent build/macos/Build/Products/Release/geo_controller.app "$CM_EXPORT_DIR/geo_controller-macos.zip"
+      - name: Sign with Developer ID
+        script: |
+          keychain initialize
+          echo "$CM_CERTIFICATE" | base64 --decode > /tmp/devid.p12
+          keychain add-certificates --certificate /tmp/devid.p12 --certificate-password "$CM_CERTIFICATE_PASSWORD"
+          APP=build/macos/Build/Products/Release/geo_controller.app
+          ID="Developer ID Application"
+          # Inside-out: nested frameworks first, then the app with its sandbox entitlements.
+          find "$APP/Contents/Frameworks" -maxdepth 1 \( -name "*.framework" -o -name "*.dylib" \) \
+            -exec codesign --force --timestamp --options runtime -s "$ID" {} \;
+          codesign --force --timestamp --options runtime --entitlements macos/Runner/Release.entitlements -s "$ID" "$APP"
+          codesign --verify --strict --verbose=2 "$APP"
+      - name: Notarize
+        script: |
+          APP=build/macos/Build/Products/Release/geo_controller.app
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY" > /tmp/AuthKey.p8
+          ditto -c -k --keepParent "$APP" /tmp/notarize.zip
+          xcrun notarytool submit /tmp/notarize.zip --wait \
+            --key /tmp/AuthKey.p8 --key-id "$APP_STORE_CONNECT_KEY_IDENTIFIER" --issuer "$APP_STORE_CONNECT_ISSUER_ID"
+          xcrun stapler staple "$APP"
+          ditto -c -k --keepParent "$APP" "$CM_EXPORT_DIR/geo_controller-macos.zip"
