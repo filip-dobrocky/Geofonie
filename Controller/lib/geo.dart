@@ -7,7 +7,9 @@ import 'package:network_info_plus/network_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wifi_iot/wifi_iot.dart';
 
+import 'midi.dart';
 import 'osc.dart';
+import 'score.dart';
 
 // Ports and mesh credentials from PlatformIO/common/NetworkConfig.h.
 const cmdPort = 54345;
@@ -118,6 +120,7 @@ class Geo extends ChangeNotifier {
   bool get live => [...roto.values, ...acidInfo.values].any((n) => n.alive);
 
   void set(Param p, int id, double v) {
+    if (p == auto && v > 0) runner.stop(); // firmware sequencer takes over
     if (id < 0) return _setGlobal(p, v);
     _values['${p.path} $id'] = v;
     _mark(p == fine ? speed : p, id);
@@ -217,6 +220,74 @@ class Geo extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- score / in-app sequencer ---------------------------------------------------
+  List<SeqState> score = [];
+  int seqTarget = 0; // state that "Add to sequencer" appends to
+  late final runner = ScoreRunner(applyScoreMsg, notifyListeners);
+
+  void scoreChanged() {
+    _prefs.setString('score', jsonEncode([for (final s in score) s.toJson()]));
+    notifyListeners();
+  }
+
+  /// Sends one score message the way the firmware would, through the normal
+  /// parameter path so the sliders follow.
+  void applyScoreMsg(Msg m) {
+    final double v;
+    try {
+      v = evalGen(m.gen);
+    } on FormatException {
+      return;
+    }
+    final path = m.path.replaceFirst('/global/', '/');
+    final p = allParams.where((p) => p.path == path).firstOrNull;
+    if (p != null) {
+      set(p, m.id, v);
+    } else {
+      send(m.path, [if (m.id >= 0) m.id.toDouble(), v]);
+    }
+  }
+
+  /// AUTO off first, so the ESP sequencer doesn't fight this one.
+  void seqStart() {
+    if (score.isEmpty) return;
+    set(auto, -1, 0);
+    runner.start(score, seqTarget.clamp(0, score.length - 1));
+  }
+
+  void seqStop() => runner.stop();
+
+  /// Appends this control's current value as a CONST message.
+  void addToSeq(Param p, int id) {
+    final q = p == fine ? speed : p; // fine is part of SPEED's value
+    if (score.isEmpty) score.add(SeqState('new state', [], []));
+    seqTarget = seqTarget.clamp(0, score.length - 1);
+    score[seqTarget].msgs.add(Msg(id < 0 ? globalPath(q.path) : q.path, id,
+        'CONST(${out(q, id).clamp(0.0, 1.0).toStringAsFixed(3)}f)', 100, q.label.toLowerCase()));
+    scoreChanged();
+  }
+
+  // --- MIDI -----------------------------------------------------------------------
+  late final midi = Midi(_midiControl);
+
+  void _midiControl(String t, double v, bool isNote) {
+    if (t == 'stop' || t == 'seq' || t.startsWith('cal ')) {
+      if (!isNote && v < 0.5) return; // buttons fire on CC press only
+      if (t == 'stop') return stop();
+      if (t == 'seq') return runner.running ? seqStop() : seqStart();
+      return calibrate(int.parse(t.substring(4)));
+    }
+    final sp = t.lastIndexOf(' ');
+    final p = allParams.where((p) => p.path == t.substring(0, sp)).firstOrNull;
+    final id = int.tryParse(t.substring(sp + 1));
+    if (p == null || id == null) return;
+    if (p == dir || p == auto) {
+      set(p, id, (isNote ? get(p, id) <= 0 : v >= 0.5) ? 1 : 0);
+    } else {
+      set(p, id, p == fine ? v * 0.05 : v);
+    }
+  }
+
   // --- lifecycle / settings -----------------------------------------------------
   Future<void> start() async {
     _prefs = await SharedPreferences.getInstance();
@@ -224,6 +295,9 @@ class Geo extends ChangeNotifier {
     pass = _prefs.getString('pass') ?? pass;
     manualIp = _prefs.getString('manualIp') ?? '';
     rampMs = _prefs.getInt('rampMs') ?? 0;
+    final sc = _prefs.getString('score');
+    if (sc != null) score = [for (final j in jsonDecode(sc) as List) SeqState.fromJson(j as Map)];
+    midi.start(_prefs); // not awaited: device enumeration can be slow
     await _bind();
     findNode(); // slow on Windows (powershell); UI shows status meanwhile
     Timer.periodic(const Duration(milliseconds: 50), (_) => _flush());

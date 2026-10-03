@@ -37,6 +37,8 @@ dependencies:
   shared_preferences: ^2.5.5
   wifi_iot: ^0.3.19+3
   network_info_plus: ^8.2.1
+  flutter_midi_command: ^1.0.3
+  file_selector: ^1.1.0
 
 dev_dependencies:
   flutter_test:
